@@ -32,18 +32,19 @@ git submodule update --init --recursive
 ```sh
 cd src
 ./build.sh            # compile helloworld.c → src/build/helloworld.prg
-./build.sh -e         # compile, then run in oscar64's built-in emulator
+./build.sh -e         # run in oscar64's built-in emulator (fastest)
+./build.sh -v         # run in VICE x64 (standard, fast)
+./build.sh -V         # run in VICE x64sc (cycle-exact, slow but bit-perfect timing)
 ```
 
 `build.sh` will build the oscar64 compiler automatically the first time
 (it runs `make -C make compiler` inside `./oscar64/` if
 `./oscar64/bin/oscar64` doesn't exist yet).
 
-To run the resulting `.prg` on a real C64 or in VICE:
-
-```sh
-x64 src/build/helloworld.prg
-```
+VICE 3.9 is installed at `/usr/bin/` and provides `x64`, `x64sc`,
+`x128`, `xvic`, `xpet`. We target the C64, so `x64` (fast) and
+`x64sc` (cycle-exact) are the two we use. `x64sc` is the one that
+matches real-hardware timing for the raster IRQ and SID tests.
 
 ## Documentation
 

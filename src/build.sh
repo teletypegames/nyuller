@@ -4,6 +4,8 @@
 # Usage:
 #   ./build.sh            # compile helloworld.c → build/helloworld.prg
 #   ./build.sh -e         # compile, then run in the oscar64 built-in emulator
+#   ./build.sh -v         # compile, then run in x64 (VICE standard)
+#   ./build.sh -V         # compile, then run in x64sc (VICE cycle-exact)
 #   ./build.sh -c         # just compile (default; -c is a no-op for clarity)
 #
 # Output (in ./build/):
@@ -44,8 +46,10 @@ EMU_FLAGS=""
 
 for arg in "$@"; do
 	case "$arg" in
-		-e) EMU_FLAGS="-e" ;;
-		-c) ;;  # explicit compile-only, no extra flags
+		-e) EMU_FLAGS="-e" ;;            # oscar64 built-in emulator
+		-v) EMU_FLAGS="x64" ;;           # VICE standard
+		-V) EMU_FLAGS="x64sc" ;;         # VICE cycle-exact
+		-c) ;;                           # explicit compile-only
 		-*) echo "unknown flag: $arg" >&2; exit 1 ;;
 	esac
 done
@@ -55,10 +59,22 @@ echo "compiling $SRC with $OSCAR64_BIN -> $BUILD_DIR/"
 # follow automatically since they share the base name.
 "$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/helloworld.prg" "$SRC"
 
-if [ -n "$EMU_FLAGS" ]; then
-	echo "running helloworld.prg in oscar64's built-in emulator"
-	# The emulator reads the .prg; re-run with -e pointing at the same output.
-	"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/helloworld.prg" -e "$SRC"
-fi
+case "$EMU_FLAGS" in
+	"")
+		# compile only
+		;;
+	"-e")
+		echo "running helloworld.prg in oscar64's built-in emulator"
+		"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/helloworld.prg" -e "$SRC"
+		;;
+	"x64"|"x64sc")
+		if ! command -v "$EMU_FLAGS" >/dev/null 2>&1; then
+			echo "error: $EMU_FLAGS not found in PATH" >&2
+			exit 1
+		fi
+		echo "running helloworld.prg in VICE ($EMU_FLAGS)"
+		"$EMU_FLAGS" "$BUILD_DIR/helloworld.prg"
+		;;
+esac
 
 echo "done: $BUILD_DIR/helloworld.prg"
