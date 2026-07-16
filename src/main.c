@@ -1,39 +1,39 @@
-// main.c — Whack Hare! entry point (Phase 3: score bar).
+// main.c — Whack Hare! entry point (Phase 4: state machine skeleton).
 //
 // Flow:
 //   1. memmap_setup()      — bank out KERNAL/BASIC/CHAR ROM.
-//   2. show_screen(TITLE)  — copy the title bitmap into $E000 and
-//                            configure the VIC for multicolor bitmap
-//                            mode.
-//   3. score_init()        — zero both player scores.
-//   4. score_render()      — overlay the score bar on the top 8 rows.
-//   5. Loop: poll joystick port 1 for fire.  When pressed, restore
-//      the C64's default memory config and return from main() (which
-//      ends the program).
+//   2. score_init()        — zero both player scores.
+//   3. game_init()         — enter the TITLE state (which also loads
+//                            the title screen and renders the score
+//                            bar).
+//   4. while (1) game_step() — the state machine runs forever.
 //
-// Build:  ./build.sh        (compile to src/build/whack_hare.prg)
-// Run:    ./build.sh -e     (headless, in oscar64's built-in emulator)
-//         ./build.sh -v     (VICE x64, interactive, needs a display)
+// In Phase 4 this is a busy-wait loop: game_step() is called in a
+// tight loop with no real timing.  The "frame counter" inside game.c
+// is just a count of how many times game_step() has been called, so
+// the state durations are CPU-bound, not wall-clock-bound.
+//
+// In Phase 5 the busy-wait body of the main loop becomes a raster
+// IRQ handler that runs at 50 Hz, and game_step() is called from
+// the IRQ.  The function signature doesn't change — only the call
+// site does — so the game logic is the same in both phases.
 
 #include "memmap.h"
-#include "screens.h"
-#include "input.h"
+#include "game.h"
 #include "score.h"
+
+// We don't malloc, so the heap is unused.  Setting it to 0 frees the
+// space for the screen data in the main region.
+#pragma heapsize(0)
 
 int main(void)
 {
 	memmap_setup();
-	show_screen(SCREEN_TITLE);
-
 	score_init();
-	score_render();
+	game_init();
 
-	// Phase 3: just poll for fire on port 1 (the Hare / right joystick).
-	// In Phase 4 this becomes a 50 Hz raster IRQ handler that drives the
-	// full state machine.
-	while (!input_fire(1))
-		;
+	while (1)
+		game_step();
 
-	memmap_restore();
 	return 0;
 }

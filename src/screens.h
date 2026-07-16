@@ -43,11 +43,36 @@
 //   memptr (D018) = 0x48      (screen at $D000, bitmap at $E000 within
 //                              the selected 16K VIC bank)
 //
-// For Phase 2 only SCREEN_TITLE has embedded data; the other IDs are
-// reserved for Phase 4 (state machine).  Calling show_screen() with an
-// unsupported ID is a no-op.
+// Calling show_screen() with an unsupported ID is a no-op.
 
 void show_screen(int n);
+
+// show_white_screen() — switch to the DRAW screen: solid white fill
+// over the entire visible area (including the score bar, which becomes
+// invisible).
+//
+// Implementation:
+//   1. Fill the 8 KB bitmap at $E000-$FFFF with 0x00 so every pixel is
+//      a "00" code (which uses $D021).
+//   2. Clear the 1 KB screen memory at $D000-$D3E7 (so any leftover
+//      "01" / "10" cell values are 0, in case the bitmap ever contains
+//      a non-zero pixel).
+//   3. Clear the 1 KB color RAM at $D800-$DBE7.
+//   4. Set $D021 (background) = white, $D020 (border) = white.  Also
+//      set $D022 / $D023 to white for safety (they're not used for
+//      "00" pixels, but any stray "01" / "10" pixel would be black
+//      otherwise).
+//   5. Same VIC mode config as show_screen().
+//
+// The score bar overlay (drawn by score_render() in game.c) writes
+// "00" (black, from $D021) and "11" (white, from color RAM) pixels in
+// the top 8 rows.  With $D021 and color RAM both white, the entire
+// score bar is white and invisible against the white background.
+// The bitmap rewrite on the score bar cells is harmless; it just
+// produces more white.
+//
+// Called by game.c on entry to STATE_DRAW.
+void show_white_screen(void);
 
 #pragma compile("screens.c")
 
