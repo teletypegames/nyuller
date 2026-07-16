@@ -11,9 +11,19 @@ src/build/
 *.bin
 *.crt
 
+# but DO commit the asset-pipeline outputs (see tools/convert_screens.py)
+!src/data/processed/*.bin
+!src/data/processed/*.attr
+!src/data/processed/*.d021
+!src/data/raw/
+
 # oscar64 build output (built by `make -C make compiler` from oscar64 source)
 oscar64/bin/
 oscar64/build/
+
+# python cache
+__pycache__/
+*.pyc
 
 # editor / IDE
 .vscode/
