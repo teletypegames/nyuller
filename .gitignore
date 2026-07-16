@@ -1,0 +1,28 @@
+# build artifacts
+src/build/
+*.prg
+*.asm
+*.map
+*.lbl
+*.int
+*.dbj
+*.csz
+*.d64
+*.bin
+*.crt
+
+# oscar64 build output (built by `make -C make compiler` from oscar64 source)
+oscar64/bin/
+oscar64/build/
+
+# editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# misc
+*.log
+core
