@@ -2,17 +2,17 @@
 # build.sh — compile and optionally run a single C64 program with Oscar64.
 #
 # Usage:
-#   ./build.sh            # compile helloworld.c → build/helloworld.prg
+#   ./build.sh            # compile main.c → build/whack_hare.prg
 #   ./build.sh -e         # run in oscar64's built-in emulator (headless, fast)
 #   ./build.sh -v         # run in VICE x64 (interactive, needs a display)
 #   ./build.sh -V         # run in VICE x64sc (interactive, cycle-exact, slow)
 #   ./build.sh -c         # just compile
 #
 # Output (in ./build/):
-#   helloworld.prg   — loadable C64 program (run with x64, VICE, or real hw)
-#   helloworld.asm   — full 6502 listing
-#   helloworld.map   — region/section/object placement
-#   helloworld.lbl   — VICE monitor label commands
+#   whack_hare.prg   — loadable C64 program (run with x64, VICE, or real hw)
+#   whack_hare.asm   — full 6502 listing
+#   whack_hare.map   — region/section/object placement
+#   whack_hare.lbl   — VICE monitor label commands
 #
 # For the development loop, use -e (oscar64's built-in emulator). It runs
 # without a display, needs no ROMs, and is faster than VICE. VICE is for
@@ -46,7 +46,10 @@ if [ ! -x "$OSCAR64_BIN" ]; then
 fi
 
 # --- compile + optionally run --------------------------------------------
-SRC=helloworld.c
+# Phase 2+ entry point.  helloworld.c is kept around as a minimal sanity
+# check; build it explicitly with `./build.sh -c helloworld` (TODO if
+# needed).  Default is the real game.
+SRC=main.c
 EMU_CMD=""
 
 for arg in "$@"; do
@@ -62,15 +65,15 @@ done
 echo "compiling $SRC with $OSCAR64_BIN -> $BUILD_DIR/"
 # -o puts the .prg in the build dir; the other artifacts (.asm, .map, .lbl)
 # follow automatically since they share the base name.
-"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/helloworld.prg" "$SRC"
+"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/whack_hare.prg" "$SRC"
 
 case "$EMU_CMD" in
 	"")
 		# compile only
 		;;
 	"oscar64")
-		echo "running helloworld.prg in oscar64's built-in emulator"
-		"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/helloworld.prg" -e "$SRC"
+		echo "running whack_hare.prg in oscar64's built-in emulator"
+		"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/whack_hare.prg" -e "$SRC"
 		;;
 	"x64"|"x64sc")
 		if ! command -v "$EMU_CMD" >/dev/null 2>&1; then
@@ -81,9 +84,9 @@ case "$EMU_CMD" in
 			echo "warning: no \$DISPLAY set; VICE may not render correctly" >&2
 			echo "  for headless testing use -e (oscar64's built-in emulator)" >&2
 		fi
-		echo "running helloworld.prg in VICE ($EMU_CMD)"
-		"$EMU_CMD" "$BUILD_DIR/helloworld.prg"
+		echo "running whack_hare.prg in VICE ($EMU_CMD)"
+		"$EMU_CMD" "$BUILD_DIR/whack_hare.prg"
 		;;
 esac
 
-echo "done: $BUILD_DIR/helloworld.prg"
+echo "done: $BUILD_DIR/whack_hare.prg"
