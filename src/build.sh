@@ -3,16 +3,21 @@
 #
 # Usage:
 #   ./build.sh            # compile helloworld.c → build/helloworld.prg
-#   ./build.sh -e         # compile, then run in the oscar64 built-in emulator
-#   ./build.sh -v         # compile, then run in x64 (VICE standard)
-#   ./build.sh -V         # compile, then run in x64sc (VICE cycle-exact)
-#   ./build.sh -c         # just compile (default; -c is a no-op for clarity)
+#   ./build.sh -e         # run in oscar64's built-in emulator (headless, fast)
+#   ./build.sh -v         # run in VICE x64 (interactive, needs a display)
+#   ./build.sh -V         # run in VICE x64sc (interactive, cycle-exact, slow)
+#   ./build.sh -c         # just compile
 #
 # Output (in ./build/):
 #   helloworld.prg   — loadable C64 program (run with x64, VICE, or real hw)
 #   helloworld.asm   — full 6502 listing
 #   helloworld.map   — region/section/object placement
 #   helloworld.lbl   — VICE monitor label commands
+#
+# For the development loop, use -e (oscar64's built-in emulator). It runs
+# without a display, needs no ROMs, and is faster than VICE. VICE is for
+# interactive use in a real terminal session, or for cycle-exact validation
+# of raster IRQ and SID timing — which requires a working X display.
 
 set -e
 
@@ -42,14 +47,14 @@ fi
 
 # --- compile + optionally run --------------------------------------------
 SRC=helloworld.c
-EMU_FLAGS=""
+EMU_CMD=""
 
 for arg in "$@"; do
 	case "$arg" in
-		-e) EMU_FLAGS="-e" ;;            # oscar64 built-in emulator
-		-v) EMU_FLAGS="x64" ;;           # VICE standard
-		-V) EMU_FLAGS="x64sc" ;;         # VICE cycle-exact
-		-c) ;;                           # explicit compile-only
+		-e) EMU_CMD="oscar64" ;;         # oscar64's built-in emulator (headless)
+		-v) EMU_CMD="x64" ;;            # VICE standard
+		-V) EMU_CMD="x64sc" ;;          # VICE cycle-exact
+		-c) ;;                          # explicit compile-only
 		-*) echo "unknown flag: $arg" >&2; exit 1 ;;
 	esac
 done
@@ -59,21 +64,25 @@ echo "compiling $SRC with $OSCAR64_BIN -> $BUILD_DIR/"
 # follow automatically since they share the base name.
 "$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/helloworld.prg" "$SRC"
 
-case "$EMU_FLAGS" in
+case "$EMU_CMD" in
 	"")
 		# compile only
 		;;
-	"-e")
+	"oscar64")
 		echo "running helloworld.prg in oscar64's built-in emulator"
 		"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/helloworld.prg" -e "$SRC"
 		;;
 	"x64"|"x64sc")
-		if ! command -v "$EMU_FLAGS" >/dev/null 2>&1; then
-			echo "error: $EMU_FLAGS not found in PATH" >&2
+		if ! command -v "$EMU_CMD" >/dev/null 2>&1; then
+			echo "error: $EMU_CMD not found in PATH" >&2
 			exit 1
 		fi
-		echo "running helloworld.prg in VICE ($EMU_FLAGS)"
-		"$EMU_FLAGS" "$BUILD_DIR/helloworld.prg"
+		if [ -z "${DISPLAY:-}" ]; then
+			echo "warning: no \$DISPLAY set; VICE may not render correctly" >&2
+			echo "  for headless testing use -e (oscar64's built-in emulator)" >&2
+		fi
+		echo "running helloworld.prg in VICE ($EMU_CMD)"
+		"$EMU_CMD" "$BUILD_DIR/helloworld.prg"
 		;;
 esac
 

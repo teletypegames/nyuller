@@ -16,34 +16,36 @@ produces files in `./src/data/`.
 
 ## 0.1. Test environment
 
-**VICE 3.9 is installed** at `/usr/bin/`. The binaries available:
+**The oscar64 built-in emulator is the primary test tool.** It's
+invoked with `build.sh -e` (or `oscar64 -i=… -e source.c`) and
+runs the same `.prg` file the C64 will run, with no setup, no
+display, no ROMs, and at high speed. It is the default for the
+development loop and is what every phase's *Verify* step uses.
 
-| Binary | Use |
-|--------|-----|
-| `x64`    | Standard C64 emulator. Fast, good for gameplay iteration. |
-| `x64sc`  | Cycle-exact C64 emulator. Slower but bit-perfect timing. **Use this for the raster IRQ, audio timing, and badline-sensitive tests.** |
-| `x128`   | C128 emulator. Out of scope (we target C64 PAL), but available if we ever add C128 builds. |
-| `xvic`   | VIC-20. Out of scope. |
-| `xpet`   | PET. Out of scope. |
+**VICE 3.9 is installed** at `/usr/bin/` and can be used via
+`build.sh -v` (standard `x64`) or `build.sh -V` (cycle-exact
+`x64sc`). However, VICE is a GUI emulator and is **not suitable
+for headless / scripted use** in this environment — it needs a
+working `$DISPLAY` (X11 / Wayland) to render, and the `-exitscreenshot`
+path produces a blank PNG when no display is available. The C64
+itself boots and runs fine in VICE, but you can't see anything in
+a headless terminal. VICE is a *manual* interactive tool here:
+run it in your own terminal session when you want to watch the
+game play, validate raster IRQ timing by eye, or step through
+breakpoints in the monitor. Don't expect to script it.
 
-A typical test session for a .prg at `src/build/whack_hare.prg`:
+| Tool | Headless? | Use it for |
+|------|-----------|------------|
+| `build.sh -e` (oscar64 built-in) | Yes | Default for every Verify step. Fast, deterministic, runs in CI. |
+| `build.sh -v` (VICE x64) | No | Interactive play-testing. Needs a real display. |
+| `build.sh -V` (VICE x64sc) | No | Cycle-exact validation. Same display requirement. |
+| `x128` / `xvic` / `xpet` | No | Out of scope (we target C64 PAL). |
 
-```sh
-# Standard playthrough (fast, slight timing fudge)
-x64 src/build/whack_hare.prg
-
-# Cycle-exact (real timing, slower, what we'd see on real hw)
-x64sc src/build/whack_hare.prg
-
-# Auto-quit after 5 seconds (good for CI / scripted checks)
-x64src/build/whack_hare.prg -quitvm -exitscreenshot
-```
-
-The oscar64 built-in emulator (`build.sh -e`) is even faster than
-`x64` and is what we use during development for quick iteration. `x64`
-is what we use to confirm the binary works outside the compiler's
-emulator. `x64sc` is what we use to confirm timing-sensitive things
-(audio, raster IRQ) are correct before we call a phase done.
+**Bottom line for the plan:** every `Verify` step uses `build.sh -e`
+(unless explicitly noted). VICE is referenced only in Phase 8
+(end-to-end testing) and in the optional Phase 9 (NTSC) — both
+of which assume a developer with a real terminal session will run
+the tests.
 
 > **Prerequisite correction to GAME.md**: I said the screens would be
 > 320×200 standard hires. That's wrong for these images — they have
@@ -68,11 +70,12 @@ runs.
 - [x] ✅ `GAME.md` written.
 - [x] ✅ Source artwork in `./source_images/`.
 - [ ] ⏳ **Verify:** `cd src && ./build.sh -e` runs the hello-world
-  program in the oscar64 built-in emulator. Also
-  `x64 src/build/helloworld.prg` should work in VICE.
+  program in the oscar64 built-in emulator. (Optional: launch
+  `x64 src/build/helloworld.prg` in a real terminal session
+  to see the screen.)
 
-**Done means:** `src/build/helloworld.prg` exists and the emulator
-prints "Hello World" then exits cleanly.
+**Done means:** `src/build/helloworld.prg` exists and the
+emulator prints "Hello World" then exits cleanly.
 
 ---
 
@@ -169,8 +172,9 @@ state.
 - `cd src && ./build.sh -e` displays the title screen in the
   oscar64 built-in emulator for 5 seconds (or until fire is pressed)
   then exits.
-- `x64 src/build/whack_hare.prg` displays the title screen in VICE
-  on real timings. Compare visually to the source PNG.
+- (Optional, interactive) `x64 src/build/whack_hare.prg` in a real
+  terminal session displays the title screen on real timings.
+  Compare visually to `source_images/screen_title.png`.
 - The .map file shows our code is in $0900-$1100-ish, well within
   the 38 KB main region.
 
@@ -299,10 +303,12 @@ random source.
   sound (a low square wave burst, ~0.2 sec) and no point awarded.
 
 **Verify:**
-- The game still works in the oscar64 built-in emulator.
-- `x64sc src/build/whack_hare.prg` runs the game at cycle-exact
-  PAL timing (50.125 Hz). The state transitions happen on the
-  right raster lines. The 50 Hz tick is rock-solid.
+- The game still works in the oscar64 built-in emulator
+  (`build.sh -e`).
+- (Optional, interactive) Launch `x64sc src/build/whack_hare.prg`
+  in a real terminal to confirm the game runs at cycle-exact PAL
+  timing (50.125 Hz). The state transitions happen on the right
+  raster lines. The 50 Hz tick is rock-solid.
 - WAIT duration varies visibly across multiple rounds.
 - Press fire during WAIT (cheating) — nothing happens, we
   ignore inputs in WAIT state. (Add this as an explicit
@@ -357,9 +363,11 @@ becomes audible.
   - WIN: arpeggio up.
   - GAMEOVER: longer fanfare.
 - The cues are recognizable and feel right (timing, volume).
-- Run the audio cues under `x64sc` to confirm the SID envelope
-  generator timings are right; `x64`'s less accurate timing
-  can hide note glitches that show up on real hardware.
+- (Optional, interactive) Run the audio cues under `x64sc
+  src/build/whack_hare.prg` in a real terminal to confirm the
+  SID envelope generator timings are right; the oscar64 emulator
+  is fast but not always bit-accurate on SID timing, and the
+  `x64sc` cycle-exact path is the one that matches real hardware.
 
 **Done means:** the game has sound. This is the phase where
 the game becomes "the game" rather than "a tech demo".
@@ -424,12 +432,10 @@ with no rough edges. We also do the real-hardware test.
 - [ ] Add a brief stinger sound (0.1 sec) on each state
   transition. Just a quick low square wave.
 - [ ] Make sure scores are reset on entering GAMEOVER → TITLE.
-- [ ] Run the full game in VICE multiple times:
-  - `x64 src/build/whack_hare.prg` for the fast playthrough loop.
-  - `x64sc src/build/whack_hare.prg` for the cycle-exact
-    playthrough, which is the closest we'll get to real hw
-    without owning a C64.
-  Coverage:
+- [ ] Run the full game in the oscar64 built-in emulator
+  (`build.sh -e`) for the development loop, and (optionally,
+  when you have a real terminal session) in `x64` / `x64sc` for
+  interactive play-testing and cycle-exact validation. Coverage:
   - P1 wins 5 in a row (cheat test: hold fire on port 1 the
     whole DRAW).
   - P2 wins 5 in a row.
@@ -439,16 +445,18 @@ with no rough edges. We also do the real-hardware test.
   - 10 random full matches to sanity-check the WAIT duration
     distribution.
 - [ ] Build with `-O3` and verify the .prg still works under
-  `x64sc` (optimization can change timing subtly).
+  `x64sc` (in a real terminal session) — optimization can
+  change timing subtly.
 - [ ] If we have a real C64 or a Turbo Everdrive, test on
-  real hardware. Otherwise document that we tested in VICE
-  cycle-exact mode (`x64sc`).
+  real hardware. Otherwise document that we tested in the
+  oscar64 emulator + `x64sc` cycle-exact mode.
 - [ ] Strip `-g` from the release build. Add a `-O3` build
   target to build.sh.
 - [ ] Final pass: review the .map file, check no section is
   larger than expected, check no RAM region is over-allocated.
-- [ ] Final sanity check under `x64sc`: load the release build,
-  play a full match, and confirm the .prg is small enough to
+- [ ] Final sanity check: load the release build into `x64sc`
+  in a real terminal session, play a full match, and confirm
+  the .prg is small enough to
   load via `LOAD"*",8,1` (i.e. ≤ 202 blocks = 51,308 bytes).
 
 **Verify:**

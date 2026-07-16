@@ -32,19 +32,27 @@ git submodule update --init --recursive
 ```sh
 cd src
 ./build.sh            # compile helloworld.c → src/build/helloworld.prg
-./build.sh -e         # run in oscar64's built-in emulator (fastest)
-./build.sh -v         # run in VICE x64 (standard, fast)
-./build.sh -V         # run in VICE x64sc (cycle-exact, slow but bit-perfect timing)
+./build.sh -e         # run in oscar64's built-in emulator (headless, fast)
+./build.sh -v         # run in VICE x64 (interactive, needs a real display)
+./build.sh -V         # run in VICE x64sc (interactive, cycle-exact)
+./build.sh -c         # just compile
 ```
 
 `build.sh` will build the oscar64 compiler automatically the first time
 (it runs `make -C make compiler` inside `./oscar64/` if
 `./oscar64/bin/oscar64` doesn't exist yet).
 
-VICE 3.9 is installed at `/usr/bin/` and provides `x64`, `x64sc`,
-`x128`, `xvic`, `xpet`. We target the C64, so `x64` (fast) and
-`x64sc` (cycle-exact) are the two we use. `x64sc` is the one that
-matches real-hardware timing for the raster IRQ and SID tests.
+**Default test tool is the oscar64 built-in emulator** (`-e`): it
+runs headless, needs no ROMs, no display, and is fast. Every `Verify`
+step in `tasks.md` uses this.
+
+**VICE 3.9 is installed** at `/usr/bin/` (`x64`, `x64sc`, `x128`,
+`xvic`, `xpet`) and is available via `-v` / `-V`. It is a GUI
+emulator and **needs a real X11 / Wayland display to render** — it
+won't produce useful screenshots in this headless environment.
+Use it from a real terminal session for interactive play-testing
+and cycle-exact validation of raster IRQ and SID timing; don't
+expect to script it.
 
 ## Documentation
 
