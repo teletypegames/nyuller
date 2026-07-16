@@ -22,23 +22,22 @@ runs the same `.prg` file the C64 will run, with no setup, no
 display, no ROMs, and at high speed. It is the default for the
 development loop and is what every phase's *Verify* step uses.
 
-**VICE 3.9 is installed** at `/usr/bin/` and can be used via
-`build.sh -v` (standard `x64`) or `build.sh -V` (cycle-exact
-`x64sc`). However, VICE is a GUI emulator and is **not suitable
-for headless / scripted use** in this environment — it needs a
-working `$DISPLAY` (X11 / Wayland) to render, and the `-exitscreenshot`
-path produces a blank PNG when no display is available. The C64
-itself boots and runs fine in VICE, but you can't see anything in
-a headless terminal. VICE is a *manual* interactive tool here:
-run it in your own terminal session when you want to watch the
-game play, validate raster IRQ timing by eye, or step through
-breakpoints in the monitor. Don't expect to script it.
+**VICE is not used.** VICE 3.9 is installed at `/usr/bin/` but is
+a GUI emulator that requires a real X11/Wayland display to render.
+In this headless environment, the ROMs had to be fetched manually,
+the KERNAL/BASIC/CHAR/1541 ROMs were not bundled with the package,
+and the autostart mechanism produced blank screenshots (no display
+to render to). We attempted to get VICE working and abandoned
+the effort after deciding it wasn't worth the time. The `build.sh
+-v` / `-V` flags remain in place for the rare case where someone
+has a real terminal session and wants to use VICE interactively,
+but **no phase of this project depends on VICE for verification**,
+and the `-v` / `-V` flags are *optional* additions, not required.
 
 | Tool | Headless? | Use it for |
 |------|-----------|------------|
 | `build.sh -e` (oscar64 built-in) | Yes | Default for every Verify step. Fast, deterministic, runs in CI. |
-| `build.sh -v` (VICE x64) | No | Interactive play-testing. Needs a real display. |
-| `build.sh -V` (VICE x64sc) | No | Cycle-exact validation. Same display requirement. |
+| `build.sh -v` / `-V` (VICE) | No | Optional, interactive only. VICE is unreliable in this headless env and not used for verification. |
 | `x128` / `xvic` / `xpet` | No | Out of scope (we target C64 PAL). |
 
 **Bottom line for the plan:** every `Verify` step uses `build.sh -e`
