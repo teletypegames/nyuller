@@ -2,32 +2,54 @@
 //
 // See game.h for the transition diagram and game_init() / game_step()
 // documentation.  Each state has an "enter" action (set the screen,
-// reset the frame counter, reset per-state state) and a "step" action
-// (check inputs, advance the frame counter, transition).
+// reset per-state state, sample any randomness) and a "step" action
+// (check inputs, compute elapsed frames against enter_frame, decide
+// whether to transition).
 //
-// In Phase 4 the main loop is `while (1) game_step();`.  In Phase 5
-// the body of the main loop will be replaced by a raster IRQ handler
-// that calls game_step() on line 311.  Either way, game_step() is the
-// only thing that needs to run "once per frame".
+// In Phase 4 the main loop was `while (1) game_step();` and the
+// per-state "frame counter" was just a count of how many times
+// game_step had been called since entering the current state — so
+// state durations were CPU-bound, not wall-clock-bound.
+//
+// In Phase 5 the busy-wait body of the main loop is gone.  Instead,
+// a raster IRQ at line 311 (PAL stable line) runs at exactly 50 Hz
+// and calls game_step() once per frame.  All state durations are
+// now wall-clock-bound: a state that should last 60 frames lasts
+// 60 × 20 ms = 1.2 seconds, regardless of what the CPU is doing
+// between IRQs.  The 16-bit global frame_count (incremented by the
+// IRQ handler *before* calling game_step) is the new "frame
+// counter"; per-state timing uses an enter_frame timestamp captured
+// on entry.
 
 #include "game.h"
 #include "screens.h"
 #include "input.h"
 #include "score.h"
 #include <c64/vic.h>
+#include <c64/sid.h>
+
+// --- globals ------------------------------------------------------------
 
 // Current state.  Set by game_init() and by the per-state step
 // functions when a transition is triggered.  Read by the switch in
 // game_step().
 static byte state;
 
-// Frame counter for the current state.  Reset to 0 by each per-state
-// "enter" function.  Compared against per-state constants in the step
-// functions (60 for READY, 100 for WAIT and WIN, 300 for GAMEOVER,
-// 500 for the DRAW fault timeout).  unsigned short is enough for
-// 65535 frames = ~22 minutes at 50 Hz; the longest single state is
-// 500 frames (DRAW fault), so 16 bits is more than enough.
-static unsigned short frame;
+// Per-state "entered at" timestamp.  Set by each per-state enter
+// function to the current frame_count.  The per-state step functions
+// compute elapsed = frame_count - enter_frame to decide when to
+// transition.  16 bits is enough for 65535 frames = ~22 minutes at
+// 50 Hz; the longest single state is 500 frames (DRAW fault), so 16
+// bits is more than enough for a single state.
+static unsigned short enter_frame;
+
+// WAIT random duration (in frames).  Sampled in game_enter_ready from
+// SID $D41B (the oscillator 3 register, effectively random).
+// 100 + (sid.random % 150) gives a 2.0-5.0 second suspense window
+// at 50 Hz.  The randomness is sampled at READY enter (not WAIT
+// enter) so the value is stable for the duration of READY (and the
+// subsequent WAIT).
+static unsigned short wait_duration_frames;
 
 // --- TITLE-specific input state ----------------------------------------
 //
@@ -56,237 +78,305 @@ static unsigned short title_first_frame;
 // entry to DRAW (in game_enter_draw()).
 static char draw_was_pressed[2];
 
+// --- fault stinger -----------------------------------------------------
+//
+// When the DRAW state's 500-frame fault timeout fires, we trigger a
+// short low-square-wave stinger on SID voice 1.  This counter is
+// decremented every frame in game_step() (not in any per-state step,
+// so it cleans up even if we transition out of TITLE before the
+// stinger would naturally end).  When it reaches 0, we gate voice 1
+// off.  ~10 frames = ~0.2 sec at 50 Hz.
+static byte fault_stinger_ticks;
+
 // --- per-state enter functions -----------------------------------------
 //
 // Each "enter" function:
 //   - calls show_screen() (or show_white_screen() for DRAW)
 //   - calls score_render()
-//   - resets `frame` to 0
+//   - sets enter_frame = frame_count (the per-state timestamp)
 //   - resets any per-state state (e.g. title_input, draw_was_pressed)
 //   - sets the border color (TITLE flashes it; DRAW is all-white;
 //     other states are black)
+//   - samples the SID random for WAIT duration (in READY enter, not
+//     WAIT enter, per the Phase 5 spec)
 
 static void game_enter_title(void)
 {
-    show_screen(SCREEN_TITLE);
-    score_render();
-    frame = 0;
-    title_input = TITLE_IDLE;
-    title_first_frame = 0;
-    // Border starts white (the "PRESS FIRE" prompt is visible).
-    vic.color_border = 1;
+	show_screen(SCREEN_TITLE);
+	score_render();
+	enter_frame = frame_count;
+	title_input = TITLE_IDLE;
+	title_first_frame = 0;
+	// Border starts white (the "PRESS FIRE" prompt is visible).
+	vic.color_border = 1;
 }
 
 static void game_enter_ready(void)
 {
-    show_screen(SCREEN_WAITING1);
-    score_render();
-    frame = 0;
-    vic.color_border = 0;
+	show_screen(SCREEN_WAITING1);
+	score_render();
+	enter_frame = frame_count;
+	// Sample SID oscillator 3 ($D41B) for the upcoming WAIT duration.
+	// 100 + (sid.random % 150) frames = 2.0..5.0 sec at 50 Hz.  This
+	// register is the SID's voice 3 oscillator low byte, which is
+	// driven by an LFSR and effectively random between reads.
+	wait_duration_frames = 100 + (sid.random % 150);
+	vic.color_border = 0;
 }
 
 static void game_enter_wait(void)
 {
-    show_screen(SCREEN_WAITING2);
-    score_render();
-    frame = 0;
-    vic.color_border = 0;
+	show_screen(SCREEN_WAITING2);
+	score_render();
+	enter_frame = frame_count;
+	vic.color_border = 0;
 }
 
 static void game_enter_draw(void)
 {
-    show_white_screen();
-    score_render();
-    frame = 0;
-    vic.color_border = 1;  // white border matches the white screen
-    draw_was_pressed[0] = 0;
-    draw_was_pressed[1] = 0;
+	show_white_screen();
+	score_render();
+	enter_frame = frame_count;
+	vic.color_border = 1;  // white border matches the white screen
+	draw_was_pressed[0] = 0;
+	draw_was_pressed[1] = 0;
 }
 
 static void game_enter_win_p1(void)
 {
-    show_screen(SCREEN_WIN_HARE);
-    score_p1++;
-    score_render();
-    frame = 0;
-    vic.color_border = 0;
+	show_screen(SCREEN_WIN_HARE);
+	score_p1++;
+	score_render();
+	enter_frame = frame_count;
+	vic.color_border = 0;
 }
 
 static void game_enter_win_p2(void)
 {
-    show_screen(SCREEN_WIN_SCOOT);
-    score_p2++;
-    score_render();
-    frame = 0;
-    vic.color_border = 0;
+	show_screen(SCREEN_WIN_SCOOT);
+	score_p2++;
+	score_render();
+	enter_frame = frame_count;
+	vic.color_border = 0;
 }
 
 static void game_enter_gameover(void)
 {
-    // Show the title screen, but with the scores reset to 0/0 (the
-    // score bar makes this visually obvious: it's the title screen
-    // with an empty score bar).
-    show_screen(SCREEN_TITLE);
-    score_p1 = 0;
-    score_p2 = 0;
-    score_render();
-    frame = 0;
-    vic.color_border = 0;
+	// Show the title screen, but with the scores reset to 0/0 (the
+	// score bar makes this visually obvious: it's the title screen
+	// with an empty score bar).
+	show_screen(SCREEN_TITLE);
+	score_p1 = 0;
+	score_p2 = 0;
+	score_render();
+	enter_frame = frame_count;
+	vic.color_border = 0;
+}
+
+// --- fault stinger helpers ---------------------------------------------
+
+static void game_trigger_fault_stinger(void)
+{
+	// Low square wave on voice 1.  ~100 Hz is in the "low buzz"
+	// range, not a musical note — appropriate for an "aborted
+	// round" sting.  Attack=0, decay=0, sustain=15 (max), release=0
+	// means: the note is full volume the instant the gate goes on
+	// and stays full volume until gated off (no decay).  We gate
+	// off after ~10 frames from game_step()'s cleanup counter.
+	sid.voices[1].freq = SID_FREQ_PAL(100);
+	sid.voices[1].attdec = 0x00;
+	sid.voices[1].susrel = 0xf0;
+	sid.voices[1].ctrl = SID_CTRL_RECT | SID_CTRL_GATE;
+	fault_stinger_ticks = 10;
+}
+
+static void game_advance_fault_stinger(void)
+{
+	// Called once per frame from game_step().  Decrements the
+	// counter and gates voice 1 off when it reaches zero.  Putting
+	// this here (rather than in game_step_title) means the stinger
+	// cleans up even if we leave TITLE during the 0.2 sec window.
+	if (fault_stinger_ticks > 0) {
+		fault_stinger_ticks--;
+		if (fault_stinger_ticks == 0)
+			sid.voices[1].ctrl = SID_CTRL_RECT;
+	}
 }
 
 // --- per-state step functions ------------------------------------------
 
 static void game_step_title(void)
 {
-    // Flash the border at 25 Hz (toggle every 2 frames at 50 Hz).
-    // The visible effect is a 12.5 Hz blink on the border around the
-    // title screen image.  Phase 8 will replace this with actual
-    // "PRESS FIRE" text rendered into the bitmap.
-    if ((frame & 1) == 0)
-        vic.color_border ^= 1;
+	// Flash the border at 25 Hz (toggle every 2 frames at 50 Hz).
+	// The visible effect is a 12.5 Hz blink on the border around the
+	// title screen image.  Phase 8 will replace this with actual
+	// "PRESS FIRE" text rendered into the bitmap.
+	unsigned short elapsed = frame_count - enter_frame;
+	if ((elapsed & 1) == 0)
+		vic.color_border ^= 1;
 
-    char p1 = input_fire(1);  // Hare (port 1)
-    char p2 = input_fire(0);  // Scoot (port 0)
-    char both = p1 && p2;
-    char none = !p1 && !p2;
+	char p1 = input_fire(1);  // Hare (port 1)
+	char p2 = input_fire(0);  // Scoot (port 0)
+	char both = p1 && p2;
+	char none = !p1 && !p2;
 
-    switch (title_input) {
-        case TITLE_IDLE:
-            if (both) {
-                state = STATE_READY;
-                game_enter_ready();
-            } else if (p1 || p2) {
-                title_input = TITLE_FIRST_HELD;
-                title_first_frame = frame;
-            }
-            break;
+	switch (title_input) {
+		case TITLE_IDLE:
+			if (both) {
+				state = STATE_READY;
+				game_enter_ready();
+			} else if (p1 || p2) {
+				title_input = TITLE_FIRST_HELD;
+				title_first_frame = frame_count;
+			}
+			break;
 
-        case TITLE_FIRST_HELD:
-            if (both) {
-                if (frame - title_first_frame <= 8) {
-                    state = STATE_READY;
-                    game_enter_ready();
-                } else {
-                    title_input = TITLE_WAIT_RELEASE;
-                }
-            } else if (none) {
-                title_input = TITLE_IDLE;
-            } else if (frame - title_first_frame > 8) {
-                // Held too long without the other button following.
-                title_input = TITLE_WAIT_RELEASE;
-            }
-            // else: one still held, other not yet, within 8 frames.
-            break;
+		case TITLE_FIRST_HELD:
+			if (both) {
+				if (frame_count - title_first_frame <= 8) {
+					state = STATE_READY;
+					game_enter_ready();
+				} else {
+					title_input = TITLE_WAIT_RELEASE;
+				}
+			} else if (none) {
+				title_input = TITLE_IDLE;
+			} else if (frame_count - title_first_frame > 8) {
+				// Held too long without the other button following.
+				title_input = TITLE_WAIT_RELEASE;
+			}
+			// else: one still held, other not yet, within 8 frames.
+			break;
 
-        case TITLE_WAIT_RELEASE:
-            if (none) {
-                title_input = TITLE_IDLE;
-            }
-            break;
-    }
+		case TITLE_WAIT_RELEASE:
+			if (none) {
+				title_input = TITLE_IDLE;
+			}
+			break;
+	}
 }
 
 static void game_step_ready(void)
 {
-    if (frame >= 60) {
-        state = STATE_WAIT;
-        game_enter_wait();
-    }
+	if (frame_count - enter_frame >= 60) {
+		state = STATE_WAIT;
+		game_enter_wait();
+	}
 }
 
 static void game_step_wait(void)
 {
-    // Phase 4: fixed 100 frames.  Phase 5: random 100-250 from
-    // PEEK(0xD41B) sampled on READY enter.
-    if (frame >= 100) {
-        state = STATE_DRAW;
-        game_enter_draw();
-    }
+	// Random 100..250 frames, sampled in game_enter_ready.  We
+	// intentionally do NOT read input here — pressing fire during
+	// WAIT is "cheating" and the game ignores it (GAME.md §9).  The
+	// DRAW state still does rising-edge detection, so any fire
+	// pressed here is not remembered.
+	if (frame_count - enter_frame >= wait_duration_frames) {
+		state = STATE_DRAW;
+		game_enter_draw();
+	}
 }
 
 static void game_step_draw(void)
 {
-    // 500-frame fault timeout (10 sec at 50 Hz).  If neither player
-    // fires in 10 sec, abort the round and go back to TITLE.
-    if (frame > 500) {
-        state = STATE_TITLE;
-        game_enter_title();
-        return;
-    }
+	unsigned short elapsed = frame_count - enter_frame;
 
-    // First to fire wins.  Rising-edge detection so holding fire from
-    // before DRAW doesn't auto-trigger a win (e.g. if the player
-    // presses during WAIT and keeps it held).  P1 wins ties (matches
-    // the "fire1 first" branch in GAME.md §9).
-    char now_p1 = input_fire(1);
-    char now_p2 = input_fire(0);
-    char edge_p1 = now_p1 && !draw_was_pressed[0];
-    char edge_p2 = now_p2 && !draw_was_pressed[1];
-    draw_was_pressed[0] = now_p1;
-    draw_was_pressed[1] = now_p2;
+	// 500-frame fault timeout (10 sec at 50 Hz).  If neither player
+	// fires in 10 sec, abort the round, trigger a short stinger on
+	// SID voice 1, and go back to TITLE.  No point awarded.
+	if (elapsed > 500) {
+		game_trigger_fault_stinger();
+		state = STATE_TITLE;
+		game_enter_title();
+		return;
+	}
 
-    if (edge_p1) {
-        state = STATE_WIN_P1;
-        game_enter_win_p1();
-    } else if (edge_p2) {
-        state = STATE_WIN_P2;
-        game_enter_win_p2();
-    }
+	// First to fire wins.  Rising-edge detection so holding fire from
+	// before DRAW doesn't auto-trigger a win (e.g. if the player
+	// presses during WAIT and keeps it held).  P1 wins ties (matches
+	// the "fire1 first" branch in GAME.md §9).
+	char now_p1 = input_fire(1);
+	char now_p2 = input_fire(0);
+	char edge_p1 = now_p1 && !draw_was_pressed[0];
+	char edge_p2 = now_p2 && !draw_was_pressed[1];
+	draw_was_pressed[0] = now_p1;
+	draw_was_pressed[1] = now_p2;
+
+	if (edge_p1) {
+		state = STATE_WIN_P1;
+		game_enter_win_p1();
+	} else if (edge_p2) {
+		state = STATE_WIN_P2;
+		game_enter_win_p2();
+	}
 }
 
 static void game_step_win_p1(void)
 {
-    if (frame >= 100) {
-        if (score_p1 >= 5) {
-            state = STATE_GAMEOVER;
-            game_enter_gameover();
-        } else {
-            state = STATE_READY;
-            game_enter_ready();
-        }
-    }
+	if (frame_count - enter_frame >= 100) {
+		if (score_p1 >= 5) {
+			state = STATE_GAMEOVER;
+			game_enter_gameover();
+		} else {
+			state = STATE_READY;
+			game_enter_ready();
+		}
+	}
 }
 
 static void game_step_win_p2(void)
 {
-    if (frame >= 100) {
-        if (score_p2 >= 5) {
-            state = STATE_GAMEOVER;
-            game_enter_gameover();
-        } else {
-            state = STATE_READY;
-            game_enter_ready();
-        }
-    }
+	if (frame_count - enter_frame >= 100) {
+		if (score_p2 >= 5) {
+			state = STATE_GAMEOVER;
+			game_enter_gameover();
+		} else {
+			state = STATE_READY;
+			game_enter_ready();
+		}
+	}
 }
 
 static void game_step_gameover(void)
 {
-    if (frame >= 300) {
-        state = STATE_TITLE;
-        game_enter_title();
-    }
+	if (frame_count - enter_frame >= 300) {
+		state = STATE_TITLE;
+		game_enter_title();
+	}
 }
 
 // --- public API --------------------------------------------------------
 
+// Definition of the global frame_count declared in game.h.  Lives in
+// BSS so it's zero at startup; the raster IRQ handler increments it.
+volatile unsigned short frame_count;
+
 void game_init(void)
 {
-    state = STATE_TITLE;
-    game_enter_title();
+	state = STATE_TITLE;
+	// enter_frame is set by game_enter_title below; the very first
+	// game_step() call happens in the same raster IRQ that
+	// increments frame_count from 0 to 1, so enter_frame=0 there
+	// is fine (elapsed = 1 on the first call).
+	game_enter_title();
 }
 
 void game_step(void)
 {
-    frame++;
+	// Per-frame work that must happen regardless of state: tick down
+	// the fault-stinger counter and gate voice 1 off when it
+	// reaches zero.  Doing this here (not in any per-state step)
+	// guarantees the stinger cleans up even if we leave TITLE
+	// during its 0.2 sec lifetime.
+	game_advance_fault_stinger();
 
-    switch (state) {
-        case STATE_TITLE:    game_step_title();    break;
-        case STATE_READY:    game_step_ready();    break;
-        case STATE_WAIT:     game_step_wait();     break;
-        case STATE_DRAW:     game_step_draw();     break;
-        case STATE_WIN_P1:   game_step_win_p1();   break;
-        case STATE_WIN_P2:   game_step_win_p2();   break;
-        case STATE_GAMEOVER: game_step_gameover(); break;
-    }
+	switch (state) {
+		case STATE_TITLE:    game_step_title();    break;
+		case STATE_READY:    game_step_ready();    break;
+		case STATE_WAIT:     game_step_wait();     break;
+		case STATE_DRAW:     game_step_draw();     break;
+		case STATE_WIN_P1:   game_step_win_p1();   break;
+		case STATE_WIN_P2:   game_step_win_p2();   break;
+		case STATE_GAMEOVER: game_step_gameover(); break;
+	}
 }
