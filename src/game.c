@@ -26,6 +26,7 @@
 #include "screens.h"
 #include "input.h"
 #include "score.h"
+#include "draw.h"
 #include <c64/vic.h>
 #include <c64/sid.h>
 
@@ -79,6 +80,13 @@ static unsigned short title_first_frame;
 // entry to DRAW (in game_enter_draw()).
 static char draw_was_pressed[2];
 
+// The DRAW screen's per-frame counter.  Reset to 0 in game_enter_draw
+// (with an initial draw_render_counter(0) call to draw "000" on the
+// freshly-cleared white screen), then incremented each frame in
+// game_step_draw up to a cap of 999.  The 16-bit type is more than
+// enough: we never store more than 999, and 999 fits in 10 bits.
+static unsigned short draw_counter;
+
 // --- fault stinger -----------------------------------------------------
 //
 // When the DRAW state's 500-frame fault timeout fires, game_step_draw
@@ -98,6 +106,8 @@ static char draw_was_pressed[2];
 //     other states are black)
 //   - samples the SID random for WAIT duration (in READY enter, not
 //     WAIT enter, per the Phase 5 spec)
+//   - resets and renders the DRAW counter (DRAW only: draw_counter
+//     = 0, draw_render_counter(0))
 //   - calls audio_state_enter(state) to set up the SID for this
 //     state's cue.  This is the last step so the previous state's
 //     audio (if any) is still playing while we set up the screen,
@@ -151,6 +161,13 @@ static void game_enter_draw(void)
 	vic.color_border = 1;  // white border matches the white screen
 	draw_was_pressed[0] = 0;
 	draw_was_pressed[1] = 0;
+	// Reset the per-frame counter and render "000" once.  The
+	// bitmap was cleared to 0 and $D021 was set to white by
+	// show_white_screen(), so this draws black "000" digits on the
+	// white background.  game_step_draw() will then increment the
+	// counter and re-render each frame.
+	draw_counter = 0;
+	draw_render_counter(0);
 	audio_state_enter(STATE_DRAW);
 }
 
@@ -265,6 +282,24 @@ static void game_step_wait(void)
 static void game_step_draw(void)
 {
 	unsigned short elapsed = frame_count - enter_frame;
+
+	// Flash effect: the border $D020 strobes between black and white
+	// for the first 4 frames of DRAW, then settles to white.  The
+	// strobe creates a brief visible "flash" at the start of the
+	// round (4 frames at 50 Hz = ~80 ms).  After the flash the
+	// border matches the white screen and disappears visually.
+	if (elapsed < 5)
+		vic.color_border = (elapsed & 1) ? 0 : 1;
+	else
+		vic.color_border = 1;
+
+	// Per-frame counter: increment (capped at 999) and re-render.
+	// Drawn after the flash so the border strobe and the digit
+	// update happen in the same IRQ; the next visible frame shows
+	// both updates together.
+	if (draw_counter < 999)
+		draw_counter++;
+	draw_render_counter(draw_counter);
 
 	// 500-frame fault timeout (10 sec at 50 Hz).  If neither player
 	// fires in 10 sec, abort the round, trigger a short stinger on

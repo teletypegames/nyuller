@@ -73,8 +73,9 @@ void game_init(void);
 // the next step operates on the new state).
 //
 // game_step() also drives per-state visual updates that need to run
-// every frame (currently just the TITLE border flash at 25 Hz and
-// the fault-stinger audio gate-off counter).
+// every frame (the TITLE border flash at 25 Hz, the DRAW border
+// flash + per-frame counter, and the fault-stinger audio gate-off
+// counter).
 void game_step(void);
 
 #pragma compile("game.c")
