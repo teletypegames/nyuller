@@ -4,8 +4,11 @@
 # Usage:
 #   ./build.sh            # compile main.c → build/whack_hare.prg (-O1)
 #   ./build.sh -e         # run in oscar64's built-in emulator (headless, fast)
-#   ./build.sh -v         # run in VICE x64 (interactive, needs a display)
-#   ./build.sh -V         # run in VICE x64sc (interactive, cycle-exact, slow)
+#   ./build.sh -p         # PLAY: compile, wrap in .d64, launch VICE x64 detached
+#   ./build.sh -P         # PLAY: same as -p but with VICE x64sc (cycle-exact)
+#   ./build.sh -v         # run in VICE x64 (foreground, blocks terminal)
+#   ./build.sh -V         # run in VICE x64sc (foreground, blocks terminal)
+#   ./build.sh --kill     # kill any running VICE x64/x64sc process
 #   ./build.sh -c         # just compile
 #   ./build.sh -O0        # compile with -O0 (no optimization; debug build)
 #   ./build.sh -O2        # compile with -O2 (more aggressive inlining)
@@ -18,41 +21,53 @@
 #   whack_hare.asm   — full 6502 listing
 #   whack_hare.map   — region/section/object placement
 #   whack_hare.lbl   — VICE monitor label commands
+#   whack.d64        — disk image wrapping whack_hare.prg (for VICE autostart)
 #
 # For the development loop, use -e (oscar64's built-in emulator). It runs
-# without a display, needs no ROMs, and is faster than VICE. VICE is for
-# interactive use in a real terminal session, or for cycle-exact validation
-# of raster IRQ and SID timing — which requires a working X display.
+# without a display, needs no ROMs, and is faster than VICE. Use -p when
+# you want to play the game interactively — it launches VICE in the
+# background and returns control to your shell so you can do other things.
+#
+# Default joystick keys in VICE (Settings → Input devices → Joystick
+# settings to rebind if needed):
+#   Port 2 (left, Scoot):  W/A/S/D for up/left/right/down, Left Ctrl for fire
+#   Port 1 (right, Hare):  Arrow keys for up/left/right/down, Right Shift for fire
+# (You can rebind under Settings → Input devices → Joystick settings.)
 #
 # Optimization: the default is oscar64's default (-O1).  Pass -O3 to
 # produce a release build (auto-zero-page, outliner, aggressive inlining).
 # The release build is functionally identical to the default build on
 # cycle-accurate timings — the audio and frame counters are still
 # 50 Hz because they use the raster IRQ, not CPU-bound loops.
-#
-# Both builds pin `#pragma stacksize(0x400)` in main.c.  At -O3 the
-# code section is ~70% larger, so the data section's spillover into
-# the default stack/heap gap region leaves only ~0x400 bytes for
-# both — anything larger fails to link.  1 KB is enough because
-# the oscar64 software stack lives in zero-page (0xF7-0xFF); the
-# spillover area only needs to hold the few locals/params that
-# don't fit in ZP.
 
 set -e
 
 # --- locate the oscar64 compiler -----------------------------------------
-# This script is ./src/build.sh, so the repo root is one level up.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OSCAR64_DIR="$ROOT/oscar64"
 OSCAR64_BIN="$OSCAR64_DIR/bin/oscar64"
 BUILD_DIR="$SCRIPT_DIR/build"
+PRG="$BUILD_DIR/whack_hare.prg"
+D64="$BUILD_DIR/whack.d64"
 
-# Output goes in ./build/ (relative to the src dir), kept out of the source tree.
 mkdir -p "$BUILD_DIR"
 
-# Build the compiler if the binary is missing. (make -C make is the
-# makefile-based build from the upstream oscar64 source tree.)
+# --- kill any running VICE ------------------------------------------------
+if [ "${1:-}" = "--kill" ]; then
+	pids=$(pgrep -f "x64sc? +confirmonexit.*whack\.d64" 2>/dev/null || true)
+	if [ -n "$pids" ]; then
+		echo "killing VICE process(es): $pids"
+		kill $pids 2>/dev/null || true
+		sleep 1
+		kill -9 $pids 2>/dev/null || true
+	else
+		echo "no VICE process running (autostart of whack.d64)"
+	fi
+	exit 0
+fi
+
+# Build the compiler if it's missing.
 if [ ! -x "$OSCAR64_BIN" ]; then
 	echo "oscar64 compiler not found at $OSCAR64_BIN; building it..."
 	( cd "$OSCAR64_DIR" && make -C make compiler )
@@ -64,20 +79,20 @@ if [ ! -x "$OSCAR64_BIN" ]; then
 	exit 1
 fi
 
-# --- compile + optionally run --------------------------------------------
-# Phase 2+ entry point.  helloworld.c is kept around as a minimal sanity
-# check; build it explicitly with `./build.sh -c helloworld` (TODO if
-# needed).  Default is the real game.
+# --- parse args -----------------------------------------------------------
 SRC=main.c
 EMU_CMD=""
+PLAY_VICE=""
 OPT_FLAGS=""
 
 for arg in "$@"; do
 	case "$arg" in
-		-e) EMU_CMD="oscar64" ;;         # oscar64's built-in emulator (headless)
-		-v) EMU_CMD="x64" ;;            # VICE standard
-		-V) EMU_CMD="x64sc" ;;          # VICE cycle-exact
-		-c) ;;                          # explicit compile-only
+		-e) EMU_CMD="oscar64" ;;
+		-v) EMU_CMD="x64" ;;
+		-V) EMU_CMD="x64sc" ;;
+		-p) PLAY_VICE="x64" ;;
+		-P) PLAY_VICE="x64sc" ;;
+		-c) ;;
 		-O0) OPT_FLAGS="$OPT_FLAGS -O0" ;;
 		-O1) OPT_FLAGS="$OPT_FLAGS -O1" ;;
 		-O2) OPT_FLAGS="$OPT_FLAGS -O2" ;;
@@ -88,31 +103,67 @@ for arg in "$@"; do
 	esac
 done
 
+# --- compile --------------------------------------------------------------
 echo "compiling $SRC with $OSCAR64_BIN -> $BUILD_DIR/"
-# -o puts the .prg in the build dir; the other artifacts (.asm, .map, .lbl)
-# follow automatically since they share the base name.
-"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/whack_hare.prg" $OPT_FLAGS "$SRC"
+"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$PRG" $OPT_FLAGS "$SRC"
 
+# --- optional actions -----------------------------------------------------
 case "$EMU_CMD" in
-	"")
-		# compile only
-		;;
 	"oscar64")
 		echo "running whack_hare.prg in oscar64's built-in emulator"
-		"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$BUILD_DIR/whack_hare.prg" $OPT_FLAGS -e "$SRC"
+		"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$PRG" $OPT_FLAGS -e "$SRC"
 		;;
 	"x64"|"x64sc")
-		if ! command -v "$EMU_CMD" >/dev/null 2>&1; then
-			echo "error: $EMU_CMD not found in PATH" >&2
+		echo "wrapping $PRG in $D64 (VICE autostart needs a disk image)..."
+		if ! command -v c1541 >/dev/null 2>&1; then
+			echo "error: c1541 not found (needed to build the .d64 wrapper)" >&2
 			exit 1
 		fi
+		c1541 -format wh,of d64 "$D64" >/dev/null
+		c1541 "$D64" >/dev/null <<EOF
+write $PRG
+EOF
 		if [ -z "${DISPLAY:-}" ]; then
-			echo "warning: no \$DISPLAY set; VICE may not render correctly" >&2
-			echo "  for headless testing use -e (oscar64's built-in emulator)" >&2
+			echo "warning: no \$DISPLAY set; VICE won't show a window" >&2
 		fi
-		echo "running whack_hare.prg in VICE ($EMU_CMD)"
-		"$EMU_CMD" "$BUILD_DIR/whack_hare.prg"
+		echo "running whack_hare in VICE ($EMU_CMD, blocking)"
+		"$EMU_CMD" +confirmonexit -autostart "$D64"
 		;;
 esac
 
-echo "done: $BUILD_DIR/whack_hare.prg"
+if [ -n "$PLAY_VICE" ]; then
+	if [ -z "${DISPLAY:-}" ]; then
+		echo "error: no \$DISPLAY set; cannot launch VICE in a window" >&2
+		exit 1
+	fi
+	if ! command -v "$PLAY_VICE" >/dev/null 2>&1; then
+		echo "error: $PLAY_VICE not found in PATH" >&2
+		exit 1
+	fi
+	echo "wrapping $PRG in $D64 (VICE autostart needs a disk image)..."
+	c1541 -format wh,of d64 "$D64" >/dev/null
+	c1541 "$D64" >/dev/null <<EOF
+write $PRG
+EOF
+	echo "launching VICE $PLAY_VICE in the background with $D64..."
+	log="$BUILD_DIR/vice.log"
+	( setsid nohup "$PLAY_VICE" +confirmonexit -autostart "$D64" \
+		> "$log" 2>&1 < /dev/null & echo $! > "$BUILD_DIR/vice.pid" )
+	# setsid + nohup detach VICE from this shell so it survives our exit.
+	pid=$(cat "$BUILD_DIR/vice.pid")
+	sleep 1
+	if kill -0 "$pid" 2>/dev/null; then
+		echo ""
+		echo "VICE launched (PID $pid). Look for the x64 window on your desktop."
+		echo "Default keys: Port 1 (Hare)  = Arrows + Right Shift (fire)"
+		echo "             Port 2 (Scoot) = W A S D + Left Ctrl (fire)"
+		echo "Rebind under Settings → Input devices → Joystick settings."
+		echo "To stop VICE later:  ./build.sh --kill"
+		echo "Log file: $log"
+	else
+		echo "error: VICE failed to start; see $log for details" >&2
+		exit 1
+	fi
+fi
+
+echo "done: $PRG"
