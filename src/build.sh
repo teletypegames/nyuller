@@ -55,7 +55,10 @@ mkdir -p "$BUILD_DIR"
 
 # --- kill any running VICE ------------------------------------------------
 if [ "${1:-}" = "--kill" ]; then
-	pids=$(pgrep -f "x64sc? +confirmonexit.*whack\.d64" 2>/dev/null || true)
+	# pgrep -f uses ERE: + is a quantifier, so the regex must escape it.
+	# x64(sc)? matches both "x64" and "x64sc".  The process is launched
+	# with the literal argument string `+confirmonexit`.
+	pids=$(pgrep -f "x64(sc)? \+confirmonexit.*whack\.d64" 2>/dev/null || true)
 	if [ -n "$pids" ]; then
 		echo "killing VICE process(es): $pids"
 		kill $pids 2>/dev/null || true
@@ -64,6 +67,7 @@ if [ "${1:-}" = "--kill" ]; then
 	else
 		echo "no VICE process running (autostart of whack.d64)"
 	fi
+	rm -f "$BUILD_DIR/vice.pid" "$BUILD_DIR/vice.log"
 	exit 0
 fi
 
@@ -103,9 +107,46 @@ for arg in "$@"; do
 	esac
 done
 
+# Reject conflicting flag combinations: -v/-V (foreground VICE) and
+# -p/-P (background VICE) would both fire, leaving two emulator windows.
+if [ -n "$EMU_CMD" ] && [ -n "$PLAY_VICE" ]; then
+	echo "error: cannot combine a foreground VICE flag (-v/-V) with a play flag (-p/-P)" >&2
+	echo "  use -v to run in the foreground, or -p to detach and continue" >&2
+	exit 1
+fi
+
 # --- compile --------------------------------------------------------------
 echo "compiling $SRC with $OSCAR64_BIN -> $BUILD_DIR/"
 "$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$PRG" $OPT_FLAGS "$SRC"
+
+# build_d64() — wrap $PRG in $D64.  c1541's exit code is unreliable
+# (the interactive form always exits 0 even on failure), so the only
+# reliable success signal is listing the disk afterwards and checking
+# the PRG is there.  The flag-form `c1541 -list image` doesn't work
+# (c1541 treats it as a unit number), so we use the interactive
+# heredoc form.  All c1541 calls are wrapped in `|| true` so set -e
+# doesn't trip on transient non-zero exits from the format / write
+# steps; the final list-and-grep is the authoritative check.
+build_d64() {
+	if ! command -v c1541 >/dev/null 2>&1; then
+		echo "error: c1541 not found (needed to build the .d64 wrapper)" >&2
+		return 1
+	fi
+	c1541 -format wh,of d64 "$D64" >/dev/null 2>&1 || true
+	c1541 "$D64" >/dev/null 2>&1 <<EOF || true
+write $PRG
+EOF
+	if c1541 "$D64" 2>/dev/null <<EOF | grep -q "whack_hare.prg"
+list
+quit
+EOF
+	then
+		:
+	else
+		echo "error: failed to write $PRG to $D64 (c1541 silently exited 0)" >&2
+		return 1
+	fi
+}
 
 # --- optional actions -----------------------------------------------------
 case "$EMU_CMD" in
@@ -115,14 +156,7 @@ case "$EMU_CMD" in
 		;;
 	"x64"|"x64sc")
 		echo "wrapping $PRG in $D64 (VICE autostart needs a disk image)..."
-		if ! command -v c1541 >/dev/null 2>&1; then
-			echo "error: c1541 not found (needed to build the .d64 wrapper)" >&2
-			exit 1
-		fi
-		c1541 -format wh,of d64 "$D64" >/dev/null
-		c1541 "$D64" >/dev/null <<EOF
-write $PRG
-EOF
+		build_d64
 		if [ -z "${DISPLAY:-}" ]; then
 			echo "warning: no \$DISPLAY set; VICE won't show a window" >&2
 		fi
@@ -140,11 +174,19 @@ if [ -n "$PLAY_VICE" ]; then
 		echo "error: $PLAY_VICE not found in PATH" >&2
 		exit 1
 	fi
+	# If a previous VICE is still running, kill it before launching a
+	# new one — otherwise the two windows will fight for the same
+	# display and the old one's whack_hare will keep running in the
+	# background.
+	existing=$(pgrep -f "x64(sc)? \+confirmonexit.*whack\.d64" 2>/dev/null || true)
+	if [ -n "$existing" ]; then
+		echo "killing previous VICE process(es): $existing"
+		kill $existing 2>/dev/null || true
+		sleep 1
+		kill -9 $existing 2>/dev/null || true
+	fi
 	echo "wrapping $PRG in $D64 (VICE autostart needs a disk image)..."
-	c1541 -format wh,of d64 "$D64" >/dev/null
-	c1541 "$D64" >/dev/null <<EOF
-write $PRG
-EOF
+	build_d64
 	echo "launching VICE $PLAY_VICE in the background with $D64..."
 	log="$BUILD_DIR/vice.log"
 	( setsid nohup "$PLAY_VICE" +confirmonexit -autostart "$D64" \

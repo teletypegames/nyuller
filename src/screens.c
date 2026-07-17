@@ -26,8 +26,21 @@
 //
 // The trampoline is in the code section (around $08B3-$08FD), not at
 // $A000+ — the $A000+ entries in the .map are sstack (subroutine
-// stack) declarations of size 0, not actual data.  So the entire
-// $A000-$C000 range is free for our use.
+// stack) declarations of size 0, not actual data.
+//
+// IMPORTANT: with the KERNAL banked out ($01=$35 after memmap_setup),
+// $A000-$BFFF is *NOT* a free 8 KB region — the BASIC ROM is normally
+// banked in there, and the C64 KERNAL LOAD routine ($FFD5 / $F49E) does
+// not toggle $01, so writes to $A000-$BFFF land on the read-only
+// BASIC ROM and are silently dropped on real hardware.  This works
+// in oscar64's built-in emulator (which doesn't simulate ROM write-
+// protect) and in VICE (where the bank state depends on the .d64
+// bootstrapping), but it would fail on a real C64.
+//
+// We therefore place the .attr data in $BC00-$CFFF: 5 KB of always-RAM
+// (the I/O area $D000 stays mapped as I/O registers for the VIC, and
+// $E000-$FFFF is the LZO target / bitmap).  Five .attr files × 1000
+// bytes = 5000 bytes, fits in 5120 bytes with room to spare.
 //
 // We don't need a heap for this program (no malloc).  We set
 // heapsize(0) below in main.c to maximize the room available for data.
@@ -58,7 +71,7 @@ const char ScreenWinScootBin[] = {
 
 #pragma section( screens, 0)
 
-#pragma region( screens, 0xA000, 0xC000, , , {screens} )
+#pragma region( screens, 0xBC00, 0xD000, , , {screens} )
 
 #pragma data(screens)
 

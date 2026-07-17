@@ -94,6 +94,15 @@ void audio_init(void)
 
 	// Silence all 3 voices to clear any leftover SID state.
 	audio_stop();
+
+	// The game uses the SID's voice-3 oscillator as its random
+	// number source (read via $D41B in game.c).  audio_stop() above
+	// wrote freq=0 to all 3 voices, which leaves the oscillator
+	// stopped and $D41B stuck at 0 — so the first round of every
+	// session would always get the same (deterministic) WAIT
+	// duration.  Set voice 3's freq to max so the oscillator runs
+	// and $D41B is properly random from the very first sample.
+	sid.voices[2].freq = 0xffff;
 }
 
 void audio_stop(void)

@@ -219,15 +219,17 @@ static void game_enter_draw(void)
 	banner_clear(1);
 	enter_frame = frame_count;
 	vic.color_border = 1;  // white border matches the white screen
-	draw_was_pressed[0] = 0;
-	draw_was_pressed[1] = 0;
-	// Reset the per-frame counter and render "000" once.  The
+	draw_was_pressed[0] = input_fire(1);  // Hare — capture current state
+	draw_was_pressed[1] = input_fire(0);  // Scoot — so holding from WAIT
+	                                    //           doesn't auto-win
+	// Reset the per-frame counter and render "001" once.  The
 	// bitmap was cleared to 0 and $D021 was set to white by
-	// show_white_screen(), so this draws black "000" digits on the
+	// show_white_screen(), so this draws black "001" digits on the
 	// white background.  game_step_draw() will then increment the
-	// counter and re-render each frame.
-	draw_counter = 0;
-	draw_render_counter(0);
+	// counter and re-render each frame.  The spec (GAME.md §3 step
+	// 4) says the counter starts at 001, not 000.
+	draw_counter = 1;
+	draw_render_counter(1);
 	audio_state_enter(STATE_DRAW);
 	// 5-frame transition stinger on voice 0 (voice 2 is the noise stab).
 	audio_play_stinger(stinger_voice_for_state(STATE_DRAW), STINGER_DURATION);
