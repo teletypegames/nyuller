@@ -37,6 +37,12 @@
 // (SID_FREQ_PAL(100), sustain=15).  Triggered from game_step_draw()
 // AFTER game_enter_title() (so the state transition doesn't silence
 // it).  Cleans itself up via audio_state_step().
+//
+// **Transition stinger.**  A 5-frame low square-wave burst played on
+// every state transition.  Uses audio_play_stinger(voice, duration)
+// with a per-state voice chosen to avoid colliding with the new
+// state's audio (see the comments in game.c for the per-state voice
+// mapping).  Also cleans itself up via audio_state_step().
 
 #include "audio.h"
 #include "notes.h"
@@ -62,6 +68,13 @@ static unsigned short audio_step;
 // that uses voice 1 (WAIT, WIN, GAMEOVER).
 static byte fault_stinger_ticks;
 
+// Generic stinger counter.  Set by audio_play_stinger(voice, duration);
+// cleared by audio_state_enter() (so a transition stinger doesn't
+// leak into the next state).  audio_state_step() decrements it once
+// per frame and gates the stinger's voice off when it hits 0.
+static byte stinger_ticks;
+static byte stinger_voice;
+
 // --- public API ---------------------------------------------------------
 
 void audio_init(void)
@@ -76,6 +89,8 @@ void audio_init(void)
 	audio_state = AUDIO_STATE_NONE;
 	audio_step = 0;
 	fault_stinger_ticks = 0;
+	stinger_ticks = 0;
+	stinger_voice = 0;
 
 	// Silence all 3 voices to clear any leftover SID state.
 	audio_stop();
@@ -146,6 +161,20 @@ static void audio_advance_fault_stinger(void)
 	}
 }
 
+// Per-frame transition-stinger tick.  Same shape as the fault
+// stinger tick, but operates on the voice picked by
+// audio_play_stinger().  Runs independently of the fault stinger
+// (the two can overlap, e.g. a state transition that happens to
+// coincide with a fault).
+static void audio_advance_stinger(void)
+{
+	if (stinger_ticks > 0) {
+		stinger_ticks--;
+		if (stinger_ticks == 0)
+			sid.voices[stinger_voice].ctrl = SID_CTRL_RECT;
+	}
+}
+
 void audio_play_fault_stinger(void)
 {
 	// Low square wave on voice 1.  ~100 Hz is in the "low buzz"
@@ -162,6 +191,27 @@ void audio_play_fault_stinger(void)
 	fault_stinger_ticks = 10;
 }
 
+void audio_play_stinger(int voice, int duration)
+{
+	// Brief low square-wave stinger on the given voice.  Used on
+	// every state transition (5 frames = 0.1 sec at 50 Hz).  The
+	// voice must be chosen to avoid colliding with the new state's
+	// audio (see game.c for the per-state voice mapping).  Cleans
+	// itself up via audio_advance_stinger() (called from
+	// audio_state_step()).
+	//
+	// Will be silenced by the NEXT audio_state_enter() call (i.e.
+	// the next state transition) via the audio_stop() it does
+	// internally, so a long stinger can't bleed across states.
+	sid.voices[voice].freq = SID_FREQ_PAL(100);
+	sid.voices[voice].pwm = 0x0800;
+	sid.voices[voice].attdec = SID_ATK_2;
+	sid.voices[voice].susrel = 0xf0;
+	sid.voices[voice].ctrl = SID_CTRL_RECT | SID_CTRL_GATE;
+	stinger_voice = (byte)voice;
+	stinger_ticks = (byte)duration;
+}
+
 void audio_state_enter(int state)
 {
 	// First silence the SID — this is what prevents the WAIT loop
@@ -169,6 +219,7 @@ void audio_state_enter(int state)
 	// stinger when transitioning to a state that uses voice 1.
 	audio_stop();
 	fault_stinger_ticks = 0;
+	stinger_ticks = 0;
 	audio_step = 0;
 	audio_state = (byte)state;
 
@@ -284,10 +335,12 @@ void audio_state_enter(int state)
 void audio_state_step(int state)
 {
 	// Per-frame work that must happen regardless of state: tick
-	// down the fault-stinger counter.  Doing this here (not in any
-	// per-state step) means the stinger cleans up even if we
-	// transition out of TITLE during the 0.2s window.
+	// down the fault-stinger counter and the transition-stinger
+	// counter.  Doing this here (not in any per-state step) means
+	// the stingers clean up even if we transition out of the
+	// current state during the stinger's window.
 	audio_advance_fault_stinger();
+	audio_advance_stinger();
 
 	// If the audio layer hasn't been initialized for this state
 	// yet (e.g. audio_state_enter() wasn't called between

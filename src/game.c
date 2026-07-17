@@ -26,6 +26,7 @@
 #include "screens.h"
 #include "input.h"
 #include "score.h"
+#include "banner.h"
 #include "draw.h"
 #include <c64/vic.h>
 #include <c64/sid.h>
@@ -95,6 +96,46 @@ static unsigned short draw_counter;
 // cleanup logic lives in audio.c (audio_advance_fault_stinger, called
 // from audio_state_step).  See audio.c for details.
 
+// --- transition stinger voice mapping ----------------------------------
+//
+// The state-transition stinger is a 5-frame low square wave played
+// on every game_enter_X() call (after audio_state_enter() so the
+// new state's audio isn't immediately silenced).  Each state picks
+// a voice that is FREE in the new state so the stinger doesn't
+// collide with the new state's main cue:
+//
+//   STATE_TITLE     -> voice 0  (TITLE is silent; voice 1+2 free)
+//   STATE_READY     -> voice 1  (READY uses voice 0 only; voice 1+2 free)
+//   STATE_WAIT      -> voice 2  (WAIT uses voice 0+1; voice 2 free)
+//   STATE_DRAW      -> voice 0  (DRAW uses voice 2 for noise; voice 0+1 free)
+//   STATE_WIN_P1/P2 -> voice 2  (WIN uses voice 0+1; voice 2 free)
+//   STATE_GAMEOVER  -> voice 2  (GAMEOVER uses voice 0+1; voice 2 free)
+//
+// (Fault stinger always uses voice 1; it fires only in TITLE so
+// voice 1 is always free there.)
+#define STINGER_DURATION	5
+
+static byte stinger_voice_for_state(byte s)
+{
+	switch (s) {
+		case STATE_TITLE:    return 0;
+		case STATE_READY:    return 1;
+		case STATE_WAIT:     return 2;
+		case STATE_DRAW:     return 0;
+		case STATE_WIN_P1:
+		case STATE_WIN_P2:   return 2;
+		case STATE_GAMEOVER: return 2;
+		default:             return 0;
+	}
+}
+
+// --- last winner --------------------------------------------------------
+//
+// Set by game_enter_win_p1/p2 to the winning player (1 or 2).  Used
+// by game_enter_gameover to pick the "HARE WINS!" or "SCOOT WINS!"
+// banner text.  Static because only game.c cares about it.
+static byte last_winner;
+
 // --- per-state enter functions -----------------------------------------
 //
 // Each "enter" function:
@@ -122,18 +163,31 @@ static void game_enter_title(void)
 {
 	show_screen(SCREEN_TITLE);
 	score_render();
+	// "PRESS FIRE" prompt: drawn in row 1 (below the score bar) of
+	// the title screen.  Re-rendered on every TITLE entry so it
+	// stays visible after any state that may have overwritten the
+	// row (only GAMEOVER writes row 1, but show_screen() re-loads
+	// the full title bitmap which overwrites it with the title
+	// art — so we always re-render the prompt here).
+	banner_render("PRESS FIRE", 1);
 	enter_frame = frame_count;
 	title_input = TITLE_IDLE;
 	title_first_frame = 0;
 	// Border starts white (the "PRESS FIRE" prompt is visible).
+	// The per-frame flash in game_step_title() toggles it at 1 Hz
+	// (50 frames on, 50 frames off).
 	vic.color_border = 1;
 	audio_state_enter(STATE_TITLE);
+	// 5-frame transition stinger on voice 0 (free in TITLE).
+	audio_play_stinger(stinger_voice_for_state(STATE_TITLE), STINGER_DURATION);
 }
 
 static void game_enter_ready(void)
 {
 	show_screen(SCREEN_WAITING1);
 	score_render();
+	// Row 1 of the waiting1 screen — clear any leftover banner.
+	banner_clear(1);
 	enter_frame = frame_count;
 	// Sample SID oscillator 3 ($D41B) for the upcoming WAIT duration.
 	// 100 + (sid.random % 150) frames = 2.0..5.0 sec at 50 Hz.  This
@@ -142,21 +196,27 @@ static void game_enter_ready(void)
 	wait_duration_frames = 100 + (sid.random % 150);
 	vic.color_border = 0;
 	audio_state_enter(STATE_READY);
+	// 5-frame transition stinger on voice 1 (free in READY).
+	audio_play_stinger(stinger_voice_for_state(STATE_READY), STINGER_DURATION);
 }
 
 static void game_enter_wait(void)
 {
 	show_screen(SCREEN_WAITING2);
 	score_render();
+	banner_clear(1);
 	enter_frame = frame_count;
 	vic.color_border = 0;
 	audio_state_enter(STATE_WAIT);
+	// 5-frame transition stinger on voice 2 (free in WAIT).
+	audio_play_stinger(stinger_voice_for_state(STATE_WAIT), STINGER_DURATION);
 }
 
 static void game_enter_draw(void)
 {
 	show_white_screen();
 	score_render();
+	banner_clear(1);
 	enter_frame = frame_count;
 	vic.color_border = 1;  // white border matches the white screen
 	draw_was_pressed[0] = 0;
@@ -169,6 +229,8 @@ static void game_enter_draw(void)
 	draw_counter = 0;
 	draw_render_counter(0);
 	audio_state_enter(STATE_DRAW);
+	// 5-frame transition stinger on voice 0 (voice 2 is the noise stab).
+	audio_play_stinger(stinger_voice_for_state(STATE_DRAW), STINGER_DURATION);
 }
 
 static void game_enter_win_p1(void)
@@ -176,9 +238,13 @@ static void game_enter_win_p1(void)
 	show_screen(SCREEN_WIN_HARE);
 	score_p1++;
 	score_render();
+	banner_clear(1);
 	enter_frame = frame_count;
 	vic.color_border = 0;
+	last_winner = 1;
 	audio_state_enter(STATE_WIN_P1);
+	// 5-frame transition stinger on voice 2 (free in WIN).
+	audio_play_stinger(stinger_voice_for_state(STATE_WIN_P1), STINGER_DURATION);
 }
 
 static void game_enter_win_p2(void)
@@ -186,36 +252,54 @@ static void game_enter_win_p2(void)
 	show_screen(SCREEN_WIN_SCOOT);
 	score_p2++;
 	score_render();
+	banner_clear(1);
 	enter_frame = frame_count;
 	vic.color_border = 0;
+	last_winner = 2;
 	audio_state_enter(STATE_WIN_P2);
+	// 5-frame transition stinger on voice 2 (free in WIN).
+	audio_play_stinger(stinger_voice_for_state(STATE_WIN_P2), STINGER_DURATION);
 }
 
 static void game_enter_gameover(void)
 {
 	// Show the title screen, but with the scores reset to 0/0 (the
 	// score bar makes this visually obvious: it's the title screen
-	// with an empty score bar).
+	// with an empty score bar).  The winner banner ("HARE WINS!" or
+	// "SCOOT WINS!") is rendered into row 1 below the score bar.
 	show_screen(SCREEN_TITLE);
 	score_p1 = 0;
 	score_p2 = 0;
 	score_render();
+	// "HARE WINS!" or "SCOOT WINS!" — driven by last_winner set in
+	// game_enter_win_p1/p2.  show_screen(SCREEN_TITLE) just
+	// reloaded the title bitmap, so row 1 currently has the title
+	// art; banner_render() will clear and overwrite it.
+	if (last_winner == 1)
+		banner_render("HARE WINS!", 1);
+	else
+		banner_render("SCOOT WINS!", 1);
 	enter_frame = frame_count;
 	vic.color_border = 0;
 	audio_state_enter(STATE_GAMEOVER);
+	// 5-frame transition stinger on voice 2 (free in GAMEOVER).
+	audio_play_stinger(stinger_voice_for_state(STATE_GAMEOVER), STINGER_DURATION);
 }
 
 // --- per-state step functions ------------------------------------------
 
 static void game_step_title(void)
 {
-	// Flash the border at 25 Hz (toggle every 2 frames at 50 Hz).
-	// The visible effect is a 12.5 Hz blink on the border around the
-	// title screen image.  Phase 8 will replace this with actual
-	// "PRESS FIRE" text rendered into the bitmap.
+	// Flash the border at 1 Hz: 50 frames on, 50 frames off.
+	// The full cycle is 100 frames = 2.0 sec, so the visible flash
+	// rate is 0.5 Hz (one on-off per 2 sec).  Phase 8 task spec
+	// calls this "1 Hz" but with explicit "50 on, 50 off" — the
+	// parenthetical is the actual rate, and we follow it.
 	unsigned short elapsed = frame_count - enter_frame;
-	if ((elapsed & 1) == 0)
-		vic.color_border ^= 1;
+	if ((elapsed % 100) < 50)
+		vic.color_border = 1;  // white
+	else
+		vic.color_border = 0;  // black
 
 	char p1 = input_fire(1);  // Hare (port 1)
 	char p2 = input_fire(0);  // Scoot (port 0)

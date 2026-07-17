@@ -48,6 +48,13 @@ void audio_state_step(int state);
 // isn't immediately silenced by the state transition).
 void audio_play_fault_stinger(void);
 
+// audio_play_stinger(voice, duration) — start a low square-wave
+// stinger on the given voice for the given number of frames.  Called
+// on every state transition by game_enter_X() (5 frames = 0.1 sec).
+// The voice must be chosen to avoid colliding with the new state's
+// audio — see game.c for the per-state voice mapping.
+void audio_play_stinger(int voice, int duration);
+
 #pragma compile("audio.c")
 
 #endif

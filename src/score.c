@@ -26,30 +26,48 @@ byte score_p2 = 0;
 
 // --- custom 4×8 font ---------------------------------------------------
 //
-// 8 characters, each 4 px wide × 8 px tall = 8 bytes (one byte per row,
-// top 4 bits are the 4 pixels of that row, MSB = leftmost pixel).
-// 64 bytes total.  Bottom 4 bits of every byte are 0.
+// 16 characters, each 4 px wide × 8 px tall = 8 bytes (one byte per
+// row, top 4 bits are the 4 pixels of that row, MSB = leftmost pixel).
+// 128 bytes total.  Bottom 4 bits of every byte are 0.
 //
-// Index:
-//   0 = H, 1 = A, 2 = R, 3 = E, 4 = S, 5 = C, 6 = O, 7 = T
-static const char font[8][8] = {
-	// H  (1 0 0 1) × 3, (1 1 1 1), (1 0 0 1) × 4
+// Index (also see CHAR_* macros in score.h):
+//   0=H, 1=A, 2=R, 3=E, 4=S, 5=C, 6=O, 7=T  (score bar labels)
+//   8=P, 9=F, 10=W, 11=I, 12=N, 13=!, 14=' ', 15=reserved
+static const char font[FONT_COUNT][8] = {
+	// 0 H  (1 0 0 1) × 3, (1 1 1 1), (1 0 0 1) × 4
 	{ 0x90, 0x90, 0x90, 0xF0, 0x90, 0x90, 0x90, 0x90 },
-	// A  (0 1 1 0), (1 0 0 1) × 2, (1 1 1 1), (1 0 0 1) × 4
+	// 1 A  (0 1 1 0), (1 0 0 1) × 2, (1 1 1 1), (1 0 0 1) × 4
 	{ 0x60, 0x90, 0x90, 0xF0, 0x90, 0x90, 0x90, 0x90 },
-	// R  (1 1 1 0), (1 0 0 1) × 2, (1 1 1 0), (1 0 1 0),
-	//    (1 0 0 1) × 3
+	// 2 R  (1 1 1 0), (1 0 0 1) × 2, (1 1 1 0), (1 0 1 0),
+	//      (1 0 0 1) × 3
 	{ 0xE0, 0x90, 0x90, 0xE0, 0xA0, 0x90, 0x90, 0x90 },
-	// E  (1 1 1 1), (1 0 0 0) × 2, (1 1 1 0), (1 0 0 0) × 3, (1 1 1 1)
+	// 3 E  (1 1 1 1), (1 0 0 0) × 2, (1 1 1 0), (1 0 0 0) × 3, (1 1 1 1)
 	{ 0xF0, 0x80, 0x80, 0xE0, 0x80, 0x80, 0x80, 0xF0 },
-	// S  (0 1 1 1), (1 0 0 0) × 2, (0 1 1 0), (0 0 0 1) × 3, (1 1 1 0)
+	// 4 S  (0 1 1 1), (1 0 0 0) × 2, (0 1 1 0), (0 0 0 1) × 3, (1 1 1 0)
 	{ 0x70, 0x80, 0x80, 0x60, 0x10, 0x10, 0x10, 0xE0 },
-	// C  (0 1 1 0), (1 0 0 1), (1 0 0 0) × 4, (1 0 0 1), (0 1 1 0)
+	// 5 C  (0 1 1 0), (1 0 0 1), (1 0 0 0) × 4, (1 0 0 1), (0 1 1 0)
 	{ 0x60, 0x90, 0x80, 0x80, 0x80, 0x80, 0x90, 0x60 },
-	// O  (0 1 1 0), (1 0 0 1) × 5, (0 1 1 0)
+	// 6 O  (0 1 1 0), (1 0 0 1) × 5, (0 1 1 0)
 	{ 0x60, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x60 },
-	// T  (1 1 1 1), (0 0 1 0) × 7
+	// 7 T  (1 1 1 1), (0 0 1 0) × 7
 	{ 0xF0, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20 },
+	// 8 P  (1 1 1 0), (1 0 0 1) × 2, (1 1 1 1), (1 0 0 0) × 4
+	{ 0xE0, 0x90, 0x90, 0xF0, 0x80, 0x80, 0x80, 0x80 },
+	// 9 F  (1 1 1 1), (1 0 0 0) × 2, (1 1 1 0), (1 0 0 0) × 4
+	{ 0xF0, 0x80, 0x80, 0xE0, 0x80, 0x80, 0x80, 0x80 },
+	// 10 W  (1 0 0 1) × 4, (1 1 1 1) × 2, (0 1 1 0), (0 0 0 0)
+	{ 0x90, 0x90, 0x90, 0x90, 0xF0, 0xF0, 0x60, 0x00 },
+	// 11 I  (1 1 1 1), (0 0 1 0) × 6, (1 1 1 1)
+	{ 0xF0, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0xF0 },
+	// 12 N  (1 0 0 0), (1 1 0 0), (1 1 0 0), (1 0 1 0), (1 0 1 0),
+	//      (1 0 0 1), (1 0 0 1), (0 0 0 0)
+	{ 0x80, 0xC0, 0xC0, 0xA0, 0xA0, 0x90, 0x90, 0x00 },
+	// 13 !  (0 0 1 0) × 5, (0 0 0 0), (0 0 1 0)
+	{ 0x20, 0x20, 0x20, 0x20, 0x20, 0x00, 0x00, 0x20 },
+	// 14 ' ' (space) - 8 empty rows
+	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+	// 15 reserved - blank for now
+	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
 };
 
 // --- pixel-pair expansion table ----------------------------------------
@@ -204,4 +222,29 @@ void score_render(void)
 	render_char(SCOOT_FIRST_CELL + 2, 6);  // O
 	render_char(SCOOT_FIRST_CELL + 3, 6);  // O
 	render_char(SCOOT_FIRST_CELL + 4, 7);  // T
+}
+
+byte font_lookup(char c)
+{
+	// Maps ASCII to font index.  Returns CHAR_RESERVED for any
+	// character not in our 15-char font.  Used by the banner
+	// renderer.
+	switch (c) {
+		case 'H': return CHAR_H;
+		case 'A': return CHAR_A;
+		case 'R': return CHAR_R;
+		case 'E': return CHAR_E;
+		case 'S': return CHAR_S;
+		case 'C': return CHAR_C;
+		case 'O': return CHAR_O;
+		case 'T': return CHAR_T;
+		case 'P': return CHAR_P;
+		case 'F': return CHAR_F;
+		case 'W': return CHAR_W;
+		case 'I': return CHAR_I;
+		case 'N': return CHAR_N;
+		case '!': return CHAR_EXCL;
+		case ' ': return CHAR_SPACE;
+		default:  return CHAR_RESERVED;
+	}
 }

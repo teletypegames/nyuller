@@ -29,7 +29,18 @@
 
 // We don't malloc, so the heap is unused.  Setting it to 0 frees the
 // space for the screen data in the main region.
+//
+// The stack is set to 0x400 (1 KB) — this is the oscar64 default,
+// pinned explicitly so the layout is predictable across `-O1` /
+// `-O3` builds.  With `-O3` the code section is larger, so the
+// data section's spillover into the default stack/heap gap region
+// leaves only ~0x400 for both.  Anything larger (0x600+) makes
+// `-O3` fail to link with "Cannot place stack section".  1 KB is
+// plenty because the oscar64 software stack lives in zero-page
+// (0xF7-0xFF, 9 bytes per the -O3 default); the spillover area
+// only needs to hold the few locals/params that don't fit in ZP.
 #pragma heapsize(0)
+#pragma stacksize(0x400)
 
 int main(void)
 {

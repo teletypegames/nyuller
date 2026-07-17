@@ -67,7 +67,15 @@ static RIRQCode frame_tick;
 // by rirq_init is the actual ISR.  This function is called via JSR
 // from the rirq_isr, and returns with RTS.  A/X/Y are saved by the
 // rirq_isr, so we can clobber them freely.
-__interrupt void frame_tick_handler(void)
+//
+// Also marked __noinline to prevent `-O3` from inlining the entire
+// state machine (game_step + audio_state_step + all per-state step
+// functions) into the IRQ handler.  Without __noinline, the
+// optimizer's aggressive inlining makes the handler 6000+ bytes
+// long, which would overrun its raster-line budget and break the
+// 50 Hz timing.  game_step is large but called only from the IRQ,
+// so the call/return overhead is negligible.
+__interrupt __noinline void frame_tick_handler(void)
 {
 	frame_count++;
 	game_step();

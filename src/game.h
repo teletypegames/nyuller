@@ -73,10 +73,14 @@ void game_init(void);
 // the next step operates on the new state).
 //
 // game_step() also drives per-state visual updates that need to run
-// every frame (the TITLE border flash at 25 Hz, the DRAW border
+// every frame (the TITLE border flash at 1 Hz, the DRAW border
 // flash + per-frame counter, and the fault-stinger audio gate-off
 // counter).
-void game_step(void);
+//
+// Marked __noinline so -O3 doesn't inline the whole state machine
+// into the IRQ handler (which would make the handler thousands of
+// bytes and overrun the raster line budget on real hardware).
+__noinline void game_step(void);
 
 #pragma compile("game.c")
 

@@ -44,6 +44,39 @@ extern byte score_p1;
 // Player 2 (Scoot) score, 0..5.
 extern byte score_p2;
 
+// --- custom 4x8 font index constants ------------------------------------
+//
+// The font (defined in score.c) is a 16-entry table of 4x8 characters.
+// Each entry is 8 bytes (one byte per row, top 4 bits = the 4 pixels of
+// the row, MSB = leftmost pixel).  Bottom 4 bits of every byte are 0.
+// Total font size = 16 * 8 = 128 bytes.  The original 8 chars (H/A/R/E/
+// S/C/O/T) are the score bar labels; the new 8 chars (P/F/I/W/N/! and
+// ' ' plus one reserved) are used by the banner renderer for the
+// "PRESS FIRE" prompt and the "HARE WINS!" / "SCOOT WINS!" banners.
+#define FONT_COUNT		16
+
+#define CHAR_H			0
+#define CHAR_A			1
+#define CHAR_R			2
+#define CHAR_E			3
+#define CHAR_S			4
+#define CHAR_C			5
+#define CHAR_O			6
+#define CHAR_T			7
+#define CHAR_P			8
+#define CHAR_F			9
+#define CHAR_W			10
+#define CHAR_I			11
+#define CHAR_N			12
+#define CHAR_EXCL		13
+#define CHAR_SPACE		14
+#define CHAR_RESERVED	15
+
+// Look up the font index for a given ASCII char.  Returns
+// CHAR_RESERVED for any char not in the font.  Used by the banner
+// renderer when given a string of ASCII text.
+byte font_lookup(char c);
+
 // score_init() — zero both scores.  Called once at startup.
 // (The variables already default to 0 in BSS; this is for symmetry with
 // the future per-state initialization in Phase 4.)
