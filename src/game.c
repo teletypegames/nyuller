@@ -22,6 +22,7 @@
 // on entry.
 
 #include "game.h"
+#include "audio.h"
 #include "screens.h"
 #include "input.h"
 #include "score.h"
@@ -80,13 +81,11 @@ static char draw_was_pressed[2];
 
 // --- fault stinger -----------------------------------------------------
 //
-// When the DRAW state's 500-frame fault timeout fires, we trigger a
-// short low-square-wave stinger on SID voice 1.  This counter is
-// decremented every frame in game_step() (not in any per-state step,
-// so it cleans up even if we transition out of TITLE before the
-// stinger would naturally end).  When it reaches 0, we gate voice 1
-// off.  ~10 frames = ~0.2 sec at 50 Hz.
-static byte fault_stinger_ticks;
+// When the DRAW state's 500-frame fault timeout fires, game_step_draw
+// transitions to TITLE and then calls audio_play_fault_stinger() to
+// start a 10-frame low square-wave burst on SID voice 1.  The
+// cleanup logic lives in audio.c (audio_advance_fault_stinger, called
+// from audio_state_step).  See audio.c for details.
 
 // --- per-state enter functions -----------------------------------------
 //
@@ -99,6 +98,15 @@ static byte fault_stinger_ticks;
 //     other states are black)
 //   - samples the SID random for WAIT duration (in READY enter, not
 //     WAIT enter, per the Phase 5 spec)
+//   - calls audio_state_enter(state) to set up the SID for this
+//     state's cue.  This is the last step so the previous state's
+//     audio (if any) is still playing while we set up the screen,
+//     and the new state's audio takes over atomically.
+//
+// The fault stinger (a 10-frame low square-wave burst on voice 1) is
+// triggered from game_step_draw() AFTER game_enter_title() returns,
+// not from game_enter_title() itself — otherwise audio_state_enter()
+// would silence it immediately.
 
 static void game_enter_title(void)
 {
@@ -109,6 +117,7 @@ static void game_enter_title(void)
 	title_first_frame = 0;
 	// Border starts white (the "PRESS FIRE" prompt is visible).
 	vic.color_border = 1;
+	audio_state_enter(STATE_TITLE);
 }
 
 static void game_enter_ready(void)
@@ -122,6 +131,7 @@ static void game_enter_ready(void)
 	// driven by an LFSR and effectively random between reads.
 	wait_duration_frames = 100 + (sid.random % 150);
 	vic.color_border = 0;
+	audio_state_enter(STATE_READY);
 }
 
 static void game_enter_wait(void)
@@ -130,6 +140,7 @@ static void game_enter_wait(void)
 	score_render();
 	enter_frame = frame_count;
 	vic.color_border = 0;
+	audio_state_enter(STATE_WAIT);
 }
 
 static void game_enter_draw(void)
@@ -140,6 +151,7 @@ static void game_enter_draw(void)
 	vic.color_border = 1;  // white border matches the white screen
 	draw_was_pressed[0] = 0;
 	draw_was_pressed[1] = 0;
+	audio_state_enter(STATE_DRAW);
 }
 
 static void game_enter_win_p1(void)
@@ -149,6 +161,7 @@ static void game_enter_win_p1(void)
 	score_render();
 	enter_frame = frame_count;
 	vic.color_border = 0;
+	audio_state_enter(STATE_WIN_P1);
 }
 
 static void game_enter_win_p2(void)
@@ -158,6 +171,7 @@ static void game_enter_win_p2(void)
 	score_render();
 	enter_frame = frame_count;
 	vic.color_border = 0;
+	audio_state_enter(STATE_WIN_P2);
 }
 
 static void game_enter_gameover(void)
@@ -171,36 +185,7 @@ static void game_enter_gameover(void)
 	score_render();
 	enter_frame = frame_count;
 	vic.color_border = 0;
-}
-
-// --- fault stinger helpers ---------------------------------------------
-
-static void game_trigger_fault_stinger(void)
-{
-	// Low square wave on voice 1.  ~100 Hz is in the "low buzz"
-	// range, not a musical note — appropriate for an "aborted
-	// round" sting.  Attack=0, decay=0, sustain=15 (max), release=0
-	// means: the note is full volume the instant the gate goes on
-	// and stays full volume until gated off (no decay).  We gate
-	// off after ~10 frames from game_step()'s cleanup counter.
-	sid.voices[1].freq = SID_FREQ_PAL(100);
-	sid.voices[1].attdec = 0x00;
-	sid.voices[1].susrel = 0xf0;
-	sid.voices[1].ctrl = SID_CTRL_RECT | SID_CTRL_GATE;
-	fault_stinger_ticks = 10;
-}
-
-static void game_advance_fault_stinger(void)
-{
-	// Called once per frame from game_step().  Decrements the
-	// counter and gates voice 1 off when it reaches zero.  Putting
-	// this here (rather than in game_step_title) means the stinger
-	// cleans up even if we leave TITLE during the 0.2 sec window.
-	if (fault_stinger_ticks > 0) {
-		fault_stinger_ticks--;
-		if (fault_stinger_ticks == 0)
-			sid.voices[1].ctrl = SID_CTRL_RECT;
-	}
+	audio_state_enter(STATE_GAMEOVER);
 }
 
 // --- per-state step functions ------------------------------------------
@@ -285,9 +270,11 @@ static void game_step_draw(void)
 	// fires in 10 sec, abort the round, trigger a short stinger on
 	// SID voice 1, and go back to TITLE.  No point awarded.
 	if (elapsed > 500) {
-		game_trigger_fault_stinger();
 		state = STATE_TITLE;
 		game_enter_title();
+		// Trigger the stinger AFTER audio_state_enter(TITLE)
+		// so it isn't silenced by the state transition.
+		audio_play_fault_stinger();
 		return;
 	}
 
@@ -363,12 +350,14 @@ void game_init(void)
 
 void game_step(void)
 {
-	// Per-frame work that must happen regardless of state: tick down
-	// the fault-stinger counter and gate voice 1 off when it
-	// reaches zero.  Doing this here (not in any per-state step)
-	// guarantees the stinger cleans up even if we leave TITLE
-	// during its 0.2 sec lifetime.
-	game_advance_fault_stinger();
+	// Advance the audio state machine.  audio_state_step() handles
+	// the per-frame fault-stinger cleanup AND the per-state
+	// schedule (READY ping-pong, WAIT loop, DRAW stab cleanup,
+	// WIN arpeggio, GAMEOVER fanfare).  It must be called every
+	// frame regardless of state, and after any state transition
+	// that happened in this frame's per-state step (so the new
+	// state's audio advances by one frame).
+	audio_state_step(state);
 
 	switch (state) {
 		case STATE_TITLE:    game_step_title();    break;
