@@ -12,8 +12,8 @@ as the cross-compiler. Oscar64 is checked in as a git submodule under
 ├── build/          # Build output (gitignored)
 ├── docs/c64/       # Low-level C64 reference (memory map, VIC, CIA, SID, …)
 ├── src/            # Your C code
-│   ├── helloworld.c
-│   └── build.sh    # Compile + run helper
+│   └── *.c, *.h
+├── Makefile        # Build + run targets (gnu make)
 ├── OSCAR64.md      # Notes on the Oscar64 compiler internals
 └── PROG_C64.md     # Notes on programming the C64 hardware
 ```
@@ -31,28 +31,28 @@ git submodule update --init --recursive
 ## Building
 
 ```sh
-cd src
-./build.sh            # compile main.c → build/nyuller.prg (-O1)
-./build.sh -e         # run in oscar64's built-in emulator (headless, fast)
-./build.sh -p         # PLAY: launch VICE in background (see build.sh --help)
-./build.sh -v         # run in VICE x64 (foreground, blocks terminal)
-./build.sh -V         # run in VICE x64sc (cycle-exact, foreground)
-./build.sh --kill     # kill any detached VICE process
-./build.sh -c         # just compile
-./build.sh -O3        # release build (auto-ZP, outliner, aggressive inlining)
+make                    # show help with all targets
+make compile            # compile → build/nyuller.prg (-O1)
+make run                # compile + run in oscar64 emulator (headless, fast)
+make play               # compile + launch VICE x64 in background
+make kill               # kill any detached VICE
+make OPT=O3             # release build (auto-ZP, outliner, aggressive inlining)
+make clean              # remove build/ artifacts
 ```
 
-`build.sh` will build the oscar64 compiler automatically the first time
+`make` will build the oscar64 compiler automatically the first time
 (it runs `make -C make compiler` inside `./oscar64/` if
 `./oscar64/bin/oscar64` doesn't exist yet).
 
-**Default test tool is the oscar64 built-in emulator** (`-e`): it
+Run `make help` for the full list of targets with descriptions.
+
+**Default test tool is the oscar64 built-in emulator** (`make run`): it
 runs headless, needs no ROMs, no display, and is fast. Every `Verify`
 step in `tasks.md` uses this.
 
 **VICE 3.9 is installed** at `/usr/bin/` (`x64`, `x64sc`, `x128`,
-`xvic`, `xpet`) and is available via `-v` / `-V`. It is a GUI
-emulator and **needs a real X11 / Wayland display to render** — it
+`xvic`, `xpet`) and is available via `make run-vice` / `make run-vice-cycle`.
+It is a GUI emulator and **needs a real X11 / Wayland display to render** — it
 won't produce useful screenshots in this headless environment.
 Use it from a real terminal session for interactive play-testing
 and cycle-exact validation of raster IRQ and SID timing; don't

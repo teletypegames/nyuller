@@ -28,29 +28,30 @@ context you need to do the work.
 ├── source_images/          # The 5 source PNGs for the game screens
 └── src/                    # YOUR CODE GOES HERE
     ├── helloworld.c        # Existing minimal working program
-    ├── build.sh            # Build script (handles compiler build, runs tests)
+    ├── build.sh            # Legacy build script (replaced by Makefile)
     └── build/              # Output directory (gitignored)
 ```
 
 ## Build and test (this is the ONLY way to verify your work)
 
 ```sh
-cd /home/ballz/work/teletype/nyuller/src
-./build.sh                 # compile helloworld.c → build/helloworld.prg
-./build.sh -e              # run in oscar64's built-in emulator (HEADLESS, fast)
-./build.sh -v              # (DO NOT USE) VICE x64 — requires a real display
-./build.sh -V              # (DO NOT USE) VICE x64sc — same problem
+cd /home/ballz/work/teletype/nyuller
+make                     # show help with all targets
+make compile             # compile → build/nyuller.prg
+make run                 # compile + run in oscar64 emulator (HEADLESS, fast)
+make play                # compile + launch VICE in background
+make kill                # kill any detached VICE
 ```
 
-**The oscar64 built-in emulator (`-e`) is the only test tool.** VICE
+**The oscar64 built-in emulator (`make run`) is the only test tool.** VICE
 does not work in this headless environment (no display, blank
 screenshots, manual ROM fetching). Do not waste time on VICE.
-The `-e` flag runs the same `.prg` file the C64 will run, with no
+The `run` target runs the same `.prg` file the C64 will run, with no
 setup, no ROMs, and at high speed.
 
-`build.sh` will auto-build the oscar64 compiler if it's missing.
-It calls `oscar64 -i=/home/ballz/work/teletype/nyuller/oscar64/include -o=build/helloworld.prg helloworld.c`
-to compile, and the same command with `-e` to run.
+`make` will auto-build the oscar64 compiler if it's missing.
+It runs `cd src && oscar64 -i=…/include -o=…/build/nyuller.prg main.c`
+to compile, and `cd src && oscar64 -i=…/include -o=…/build/nyuller.prg -e main.c` to run.
 
 The build artifacts in `build/` are: `helloworld.prg` (the C64 program),
 `helloworld.asm` (6502 listing), `helloworld.map` (region/section/object
@@ -180,6 +181,6 @@ $21-$24) goes to $D800-$DBE7.
 
 When you're done, report back:
 1. What you built (1-2 sentence summary)
-2. The output of `./build.sh -e` (proves it compiled and runs)
+2. The output of `make run` (proves it compiled and runs)
 3. The git commit hash and one-line summary
 4. Any concerns or follow-up work for the next phase

@@ -355,7 +355,6 @@ src/
 ├── draw.c / .h         # the white-screen + counter rendering
 ├── rasterirq.c / .h    # 50 Hz frame tick
 ├── notes.h             # SID frequency table
-├── build.sh            # (already exists)
 └── build/              # (gitignored) output
 ```
 

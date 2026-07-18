@@ -17,7 +17,7 @@ produces files in `./src/data/`.
 ## 0.1. Test environment
 
 **The oscar64 built-in emulator is the primary test tool.** It's
-invoked with `build.sh -e` (or `oscar64 -i=… -e source.c`) and
+invoked with `make run` (or `oscar64 -i=… -e source.c`) and
 runs the same `.prg` file the C64 will run, with no setup, no
 display, no ROMs, and at high speed. It is the default for the
 development loop and is what every phase's *Verify* step uses.
@@ -28,7 +28,7 @@ In this headless environment, the ROMs had to be fetched manually,
 the KERNAL/BASIC/CHAR/1541 ROMs were not bundled with the package,
 and the autostart mechanism produced blank screenshots (no display
 to render to). We attempted to get VICE working and abandoned
-the effort after deciding it wasn't worth the time. The `build.sh
+the effort after deciding it wasn't worth the time. The `make run`
 -v` / `-V` flags remain in place for the rare case where someone
 has a real terminal session and wants to use VICE interactively,
 but **no phase of this project depends on VICE for verification**,
@@ -36,11 +36,11 @@ and the `-v` / `-V` flags are *optional* additions, not required.
 
 | Tool | Headless? | Use it for |
 |------|-----------|------------|
-| `build.sh -e` (oscar64 built-in) | Yes | Default for every Verify step. Fast, deterministic, runs in CI. |
-| `build.sh -v` / `-V` (VICE) | No | Optional, interactive only. VICE is unreliable in this headless env and not used for verification. |
+| `make run` (oscar64 built-in) | Yes | Default for every Verify step. Fast, deterministic, runs in CI. |
+| `make run-vice` / `make run-vice-cycle` (VICE) | No | Optional, interactive only. VICE is unreliable in this headless env and not used for verification. |
 | `x128` / `xvic` / `xpet` | No | Out of scope (we target C64 PAL). |
 
-**Bottom line for the plan:** every `Verify` step uses `build.sh -e`
+**Bottom line for the plan:** every `Verify` step uses `make run`
 (unless explicitly noted). VICE is referenced only in Phase 8
 (end-to-end testing) and in the optional Phase 9 (NTSC) — both
 of which assume a developer with a real terminal session will run
@@ -64,11 +64,11 @@ the tests.
 runs.
 
 - [x] ✅ Repo initialized, oscar64 is a submodule at `./oscar64/`.
-- [x] ✅ `src/helloworld.c` + `src/build.sh` produce
+- [x] ✅ `src/helloworld.c` + `make compile` produce
   `build/helloworld.prg`.
 - [x] ✅ `GAME.md` written.
 - [x] ✅ Source artwork in `./source_images/`.
-- [ ] ⏳ **Verify:** `cd src && ./build.sh -e` runs the hello-world
+- [ ] ⏳ **Verify:** `cd src && ./make run` runs the hello-world
   program in the oscar64 built-in emulator. (Optional: launch
   `x64 build/helloworld.prg` in a real terminal session
   to see the screen.)
@@ -168,7 +168,7 @@ state.
   pressed (active low: `(PEEK(0xDC00+port) & 0x10) == 0`).
 
 **Verify:**
-- `cd src && ./build.sh -e` displays the title screen in the
+- `cd src && ./make run` displays the title screen in the
   oscar64 built-in emulator for 5 seconds (or until fire is pressed)
   then exits.
 - (Optional, interactive) `x64 build/nyuller.prg` in a real
@@ -303,7 +303,7 @@ random source.
 
 **Verify:**
 - The game still works in the oscar64 built-in emulator
-  (`build.sh -e`).
+  (`make run`).
 - (Optional, interactive) Launch `x64sc build/nyuller.prg`
   in a real terminal to confirm the game runs at cycle-exact PAL
   timing (50.125 Hz). The state transitions happen on the right
@@ -432,7 +432,7 @@ with no rough edges. We also do the real-hardware test.
   transition. Just a quick low square wave.
 - [ ] Make sure scores are reset on entering GAMEOVER → TITLE.
 - [ ] Run the full game in the oscar64 built-in emulator
-  (`build.sh -e`) for the development loop, and (optionally,
+  (`make run`) for the development loop, and (optionally,
   when you have a real terminal session) in `x64` / `x64sc` for
   interactive play-testing and cycle-exact validation. Coverage:
   - P1 wins 5 in a row (cheat test: hold fire on port 1 the
@@ -449,8 +449,8 @@ with no rough edges. We also do the real-hardware test.
 - [ ] If we have a real C64 or a Turbo Everdrive, test on
   real hardware. Otherwise document that we tested in the
   oscar64 emulator + `x64sc` cycle-exact mode.
-- [ ] Strip `-g` from the release build. Add a `-O3` build
-  target to build.sh.
+- [ ] Strip `-g` from the release build. Add a `make OPT=O3` build
+  target to Makefile (already supported via `make compile OPT=O3`).
 - [ ] Final pass: review the .map file, check no section is
   larger than expected, check no RAM region is over-allocated.
 - [ ] Final sanity check: load the release build into `x64sc`

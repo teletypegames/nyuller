@@ -2,9 +2,8 @@
 //
 // Builds a .prg that prints "Hello World" on the C64 text screen and exits.
 //
-// Build:  ../scripts/build.sh
-// Run:    x64 helloworld.prg   (or use ../scripts/build.sh -e to run in
-//                              the built-in oscar64 emulator)
+// Build:  make compile
+// Run:    make run
 
 #include <stdio.h>
 
