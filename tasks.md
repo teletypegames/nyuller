@@ -22,33 +22,27 @@ runs the same `.prg` file the C64 will run, with no setup, no
 display, no ROMs, and at high speed. It is the default for the
 development loop and is what every phase's *Verify* step uses.
 
-**VICE is not used.** VICE 3.9 is installed at `/usr/bin/` but is
-a GUI emulator that requires a real X11/Wayland display to render.
-In this headless environment, the ROMs had to be fetched manually,
-the KERNAL/BASIC/CHAR/1541 ROMs were not bundled with the package,
-and the autostart mechanism produced blank screenshots (no display
-to render to). We attempted to get VICE working and abandoned
-the effort after deciding it wasn't worth the time. The `make run`
--v` / `-V` flags remain in place for the rare case where someone
-has a real terminal session and wants to use VICE interactively,
-but **no phase of this project depends on VICE for verification**,
-and the `-v` / `-V` flags are *optional* additions, not required.
+**VICE works but is optional.** VICE 3.9 is installed at `/usr/bin/`
+and needs a real X11/Wayland display to render. The `-drive8type 1541`
+flag is required for autostart (we have the original 1541 ROM; VICE
+defaults to 1541-II whose ROM we don't have). `make play` and
+`make kill` manage the VICE lifecycle. No phase of this project
+depends on VICE for verification.
 
 | Tool | Headless? | Use it for |
 |------|-----------|------------|
 | `make run` (oscar64 built-in) | Yes | Default for every Verify step. Fast, deterministic, runs in CI. |
-| `make run-vice` / `make run-vice-cycle` (VICE) | No | Optional, interactive only. VICE is unreliable in this headless env and not used for verification. |
+| `make run-vice` / `make run-vice-cycle` (VICE) | No | Optional, interactive only. Needs `-drive8type 1541`. |
+| `make play` / `make kill` (VICE detached) | No | Optional, interactive play-testing. |
 | `x128` / `xvic` / `xpet` | No | Out of scope (we target C64 PAL). |
 
 **Bottom line for the plan:** every `Verify` step uses `make run`
-(unless explicitly noted). VICE is referenced only in Phase 8
+(unless explicitly noted). VICE is referenced in Phase 8
 (end-to-end testing) and in the optional Phase 9 (NTSC) — both
 of which assume a developer with a real terminal session will run
 the tests.
 
-> **Prerequisite correction to GAME.md**: I said the screens would be
-> 320×200 standard hires. That's wrong for these images — they have
-> well more than 2 colors per 8×8 cell. The correct target is
+> **Prerequisite correction to GAME.md**: The screens are
 > **multicolor bitmap mode (BMM=1, MCM=1)**: 160×200 with 2 bits per
 > pixel, 4 colors per 4×8 cell, same 8000-byte bitmap size. The
 > per-cell 4-color constraint means our asset pipeline has to
@@ -58,7 +52,7 @@ the tests.
 
 ---
 
-## Phase 0 — Baseline
+## Phase 0 — Baseline ✅
 
 **Goal:** clean starting point, the existing `helloworld` builds and
 runs.
@@ -68,17 +62,15 @@ runs.
   `build/helloworld.prg`.
 - [x] ✅ `GAME.md` written.
 - [x] ✅ Source artwork in `./source_images/`.
-- [ ] ⏳ **Verify:** `cd src && ./make run` runs the hello-world
-  program in the oscar64 built-in emulator. (Optional: launch
-  `x64 build/helloworld.prg` in a real terminal session
-  to see the screen.)
+- [x] ✅ **Verify:** `make run` runs the hello-world program in the
+  oscar64 built-in emulator.
 
-**Done means:** `build/helloworld.prg` exists and the
-emulator prints "Hello World" then exits cleanly.
+**Done means:** `build/helloworld.prg` exists and the emulator prints
+"Hello World" then exits cleanly.
 
 ---
 
-## Phase 1 — Asset pipeline
+## Phase 1 — Asset pipeline ✅
 
 **Goal:** convert the 5 source PNGs into 160×200 multicolor-bitmap
 `.bin` files (8000 bytes each), and a Python script that does the
@@ -87,95 +79,56 @@ sits on.
 
 ### Tasks
 
-- [ ] Create `src/data/raw/` and `src/data/processed/`.
-- [ ] Create `tools/convert_screens.py`. Inputs: a source PNG.
-  Outputs: two files — `<name>.bin` (8000-byte multicolor bitmap)
-  and `<name>.attr` (1000-byte screen memory with the foreground
-  color per cell). The script:
-  1. Crops the source to 160×200 (or 320×200 with a 2× horizontal
-     scale, depending on what gives the best result — see
-     decision point below).
-  2. For each 4×8 cell, quantizes to 4 colors from the fixed
-     16-color C64 palette (black, white, red, cyan, purple, green,
-     blue, yellow, orange, brown, light red, dark grey, medium
-     grey, light green, light blue, light grey).
-  3. Picks the most common color in the cell as the
-     "background" (one of $D021-$D024, encoded as 2 bits in the
-     screen memory high nibble).
-  4. Picks the 2nd, 3rd, 4th most common as the foreground
-     (the cell's screen memory low nibble), and the two multicolor
-     registers (D022, D023) — encoded in screen memory high bits 4-5
-     and 6-7.
-  5. Writes the 2-bit-per-pixel bitmap (MSB-first within each 4-pixel
-     pair) to `<name>.bin` and the 1000-cell attribute table to
-     `<name>.attr`.
-- [ ] **Decision point:** which of two crop strategies gives better
-  results?
-  - Strategy A: crop to 160×200 directly (loses horizontal detail).
-  - Strategy B: crop to 320×200 and 2× downscale to 160×200 with
-    area averaging.
-  Try both on `screen_waiting1.png` and pick whichever looks better
-  on the actual screen.
-- [ ] Run the script on all 5 source images. Verify each output
-  is exactly 8000 + 1000 = 9000 bytes.
-- [ ] Commit the script and the generated `.bin`/`.attr` files.
-  Generated files are checked in (not gitignored) so the build
-  doesn't depend on Python being installed.
+- [x] ✅ Created `src/data/raw/` and `src/data/processed/`.
+- [x] ✅ Created `tools/convert_screens.py`.
+- [x] ✅ Ran the script on all 5 source images. Each output
+  is exactly 8000 + 1000 + 2-3 = 9002-9003 bytes (.bin + .attr + .d021).
+- [x] ✅ Committed the script and the generated files.
 
 **Verify:**
 - `python3 tools/convert_screens.py source_images/screen_title.png src/data/processed/title`
-  produces `title.bin` (8000 B) and `title.attr` (1000 B).
+  produces `title.bin` (8000 B), `title.attr` (1000 B), `title.d021` (2-3 B).
 - `file src/data/processed/title.bin` reports "data".
-- Opening one of the .bin files in a hex editor shows it's not all
-  zeros (sanity check that the script actually ran).
 
-**Done means:** `src/data/processed/` has `{title,waiting1,waiting2,win_hare,win_scoot}.{bin,attr}` and
+**Done means:** `src/data/processed/` has `{title,waiting1,waiting2,win_hare,win_scoot}.{bin,attr,d021}` and
 the script is checked in. We can read the .bin back into a C array
 and it'll be the right format.
 
 ---
 
-## Phase 2 — Display a screen
+## Phase 2 — Display a screen ✅
 
-**Goal:** write a C program that displays the title screen at 320×200
+**Goal:** write a C program that displays the title screen at 160×200
 multicolor bitmap mode, with the score bar overlaid on top, and exits
 cleanly when fire is pressed. This is the first time we touch VIC
 state.
 
 ### Tasks
 
-- [ ] Create `src/screens.h` and `src/screens.c` with the .bin
-  data as `const char ScreenTitleBin[8000]` etc., using
-  `#embed "../data/processed/title.bin"`. The .attr data similarly:
-  `const char ScreenTitleAttr[1000]`.
-- [ ] Create `src/memmap_setup()` helper that calls
-  `mmap_trampoline()` then `mmap_set(MMAP_RAM)` (so the
-  $E000-$FFFF region is available for the bitmap), then `mmap_set(MMAP_NO_ROM)`
-  to also bank out CHAR ROM (so $D000 is I/O, not character data).
-  This gives us 8 KB free at $E000-$FFFF for the active bitmap.
-- [ ] Create `src/show_screen(int n)` helper that takes a screen
-  ID, copies the right `.bin` to $E000-$FFFF, copies the `.attr`
-  to $D800-$DBE7, sets the VIC bank bits to point to the right
-  RAM, sets the bitmap base to $E000 via $D018 VM bits, sets
-  `vic_ctrl1` for BMM=1 (bit 5), `vic_ctrl2` for MCM=1 (bit 4),
-  CSEL=1 (40 columns), and `vic.color_back` ($D021) to black.
-- [ ] Modify `src/helloworld.c` (or replace with a new `src/main.c`)
-  to call `memmap_setup()`, then `show_screen(SCREEN_TITLE)`,
-  then poll joystick port 1 — when fire is pressed, restore
-  `mmap_set(MMAP_ROM)` and exit.
-- [ ] Add a joystick-read helper `input_fire(int port)` in
-  `src/input.c` / `src/input.h`. Returns 1 if fire is currently
-  pressed (active low: `(PEEK(0xDC00+port) & 0x10) == 0`).
+- [x] ✅ Created `src/screens.h` and `src/screens.c` with the .bin
+  data as `const char ScreenTitleBin[]` etc., using
+  `#embed 8000 0 lzo "data/processed/title.bin"`. The .attr data
+  similarly: `const char ScreenTitleAttr[]`.
+- [x] ✅ Created `src/memmap.c` / `src/memmap.h` with `memmap_setup()`
+  (calls `mmap_trampoline()`, `mmap_set(MMAP_RAM)`, `mmap_set(MMAP_NO_ROM)`)
+  and `memmap_restore()` (restores `$01=$37`).
+- [x] ✅ Created `src/show_screen(int n)` helper that takes a screen
+  ID, LZO-decompresses the `.bin` to $E000-$FFFF, copies the `.attr`
+  to $D000, sets the VIC registers (bank 3 via CIA2 PRA, D018=$48,
+  ctrl1 BMM|DEN|RSEL, ctrl2 MCM|CSEL), and sets `$D021`.
+- [x] ✅ Created `src/main.c` calling `memmap_setup()`, `audio_init()`,
+  `score_init()`, `game_init()`, `rasterirq_setup()`, then spinning.
+- [x] ✅ Created `src/input.c` / `src/input.h` with `input_fire(int port)`.
+- [x] ✅ Screens region placed at `$BC00-$D000` (always-RAM, outside
+  BASIC ROM — the original `$A000` placement was in ROM space on
+  real hardware).
 
 **Verify:**
-- `cd src && ./make run` displays the title screen in the
-  oscar64 built-in emulator for 5 seconds (or until fire is pressed)
-  then exits.
-- (Optional, interactive) `x64 build/nyuller.prg` in a real
-  terminal session displays the title screen on real timings.
-  Compare visually to `source_images/screen_title.png`.
-- The .map file shows our code is in $0900-$1100-ish, well within
-  the 38 KB main region.
+- `make run` displays the title screen in the oscar64 built-in emulator.
+- (Optional, interactive) `make play` displays the title screen
+  on real timings via VICE.
+- The .map file shows the code in the `$0801-$9C00` region, the
+  `.attr` data in `$BC00-$CF88`, and the bitmap at `$E000-$FFFF`.
 
 **Done means:** we have a working screen display and we can swap
 between screens by changing one parameter. The bulk of the asset
@@ -183,289 +136,227 @@ plumbing is done.
 
 ---
 
-## Phase 3 — Score bar
+## Phase 3 — Score bar ✅
 
-**Goal:** render a score bar on the top 8 rows of the screen (the
-top 8 pixels of the hires bitmap, which is one character row in
-character mode). Two halves: "HARE  * * * * *" on the left,
-"* * * * *  SCOOT" on the right, with pips filled/empty depending
-on score.
+**Goal:** render a score bar on the top 8 rows of the screen. Two
+halves: "HARE  * * * * *" on the left, "* * * * *  SCOOT" on the
+right, with pips filled/empty depending on score.
 
 ### Tasks
 
-- [ ] Create `src/score.h` and `src/score.c` with a 5-element
-  `byte score_p1`, `byte score_p2`, and a `score_render()` function
-  that draws the pips directly into the top of the bitmap
-  (the first 8×320 = 320 bytes of the active screen at $E000).
-- [ ] Pip rendering: a filled pip is a 6×6 black block with a
-  1-pixel white border. An empty pip is just the border.
-  Center the 5 pips in the left half (col 0-159) and right half
-  (col 160-319).
-- [ ] Add a small text "HARE" / "SCOOT" label above each pip group
-  (centered, in the same 8-row band). Implement with a 4-character
-  custom font (just H, A, R, E, S, C, O, T — 8 chars total, 1 KB
-  char ROM, but only 8 bytes per character needed so 64 bytes
-  total; we can keep it in a `char` array).
-- [ ] Initialize scores to 0 in `main()`. Call `score_render()`
-  after each `show_screen()`.
+- [x] ✅ Created `src/score.h` and `src/score.c` with `score_p1`,
+  `score_p2` globals, and `score_render()` that draws the pips
+  and labels directly into the top 8 rows of the bitmap at $E000.
+- [x] ✅ Pip rendering: 6×6 black fill with 1-pixel white border.
+  5 pips per side, centered in each half of the 160px multicolor
+  screen.
+- [x] ✅ Custom 4×8 font: H, A, R, E, S, C, O, T, P, F, W, I, N, !, space.
+- [x] ✅ `score_init()` zeros both scores. `score_render()` called
+  after each `show_screen()`. Scores clamped to 0..5 at render time.
 
 **Verify:**
-- Title screen now shows "HARE 0    0 SCOOT" (or pip equivalent)
-  at the top.
-- Changing `score_p1 = 3` in main() shows 3 filled pips on the
-  left (manually verify by hardcoding the score and rebuilding).
+- Title screen shows "HARE  [5 pips]    [5 pips]  SCOOT" at the top.
+- Changing `score_p1 = 3` in main() shows 3 filled pips on the left.
 
 **Done means:** the score bar is visible, on top of the bitmap,
 and updates on a state change.
 
 ---
 
-## Phase 4 — State machine skeleton
+## Phase 4 — State machine skeleton ✅
 
 **Goal:** implement the TITLE → READY → WAIT → DRAW → WIN flow
-described in GAME.md §9, with no audio yet, fixed (not random)
-durations, no score updates. Just the screens in the right order
-at the right times.
+described in GAME.md §9, with no audio yet, fixed durations,
+no score updates. Just the screens in the right order at the right
+times.
 
 ### Tasks
 
-- [ ] Create `src/game.h` and `src/game.c` with an enum:
-  `STATE_TITLE, STATE_READY, STATE_WAIT, STATE_DRAW,
-  STATE_WIN_P1, STATE_WIN_P2, STATE_GAMEOVER`. A `byte state`
-  global, and a `game_init()`, `game_step()` pair.
-- [ ] Each state has an `enter` action (set the screen, start any
-  audio, reset a frame counter) and a `step` action (check inputs,
-  advance the frame counter, transition to the next state).
-- [ ] Without an IRQ yet, the main loop polls joysticks and
-  advances state. This is fine for testing the flow.
-- [ ] TITLE: loop, flash "PRESS FIRE" text at 25 Hz, exit when
-  both ports have fire pressed simultaneously (de-bounced: both
-  must be pressed within ~8 frames of each other; otherwise wait
-  for both to release and re-press).
-- [ ] READY: show `screen_waiting1`, count 60 frames, → WAIT.
-- [ ] WAIT: show `screen_waiting2`, count 100 frames (later:
-  random 100-250), → DRAW.
-- [ ] DRAW: show a white screen (just fill the bitmap with 0s
-  and set $D021 to white). No counter yet, no audio. Just
-  watch for fire on either port; first to fire → WIN_P1 or
-  WIN_P2 respectively. If no fire for 500 frames → back to
-  TITLE (the "fault" case).
-- [ ] WIN_P1 / WIN_P2: show the appropriate win screen, count
-  100 frames, → READY (or → GAMEOVER if score == 5).
-- [ ] GAMEOVER: show title screen, count 300 frames, → TITLE
-  (with scores reset to 0/0).
-- [ ] Update `score_render()` to be called on entry to each state.
+- [x] ✅ Created `src/game.h` and `src/game.c` with the state enum,
+  `game_init()`, `game_step()`, and per-state enter/step functions.
+- [x] ✅ TITLE: flash border at 0.5 Hz, both-fire detection with
+  8-frame de-bounce window.
+- [x] ✅ READY: show `screen_waiting1`, count 60 frames → WAIT.
+- [x] ✅ WAIT: show `screen_waiting2`, count 100 frames → DRAW.
+- [x] ✅ DRAW: white screen, watch for fire → WIN_P1 or WIN_P2.
+  500-frame fault timeout → TITLE (no point).
+- [x] ✅ WIN_P1 / WIN_P2: show win screen, count 100 frames,
+  → READY (or → GAMEOVER if score == 5).
+- [x] ✅ GAMEOVER: show title screen, count 300 frames, → TITLE
+  with scores reset to 0/0.
+- [x] ✅ `score_render()` called on entry to each state.
 
 **Verify:**
-- Run the program: it shows the title with flashing text. Press
-  both fire buttons → READY screen for 1 sec → WAIT screen for
-  ~1.6 sec → white DRAW screen. Press fire on port 1 → win_hare
-  screen for 2 sec → READY again (loop). 5 wins → title reset.
-- The state transitions are visible and predictable.
+- `make run`: game shows title with flashing text. Press both fires
+  → READY 1 sec → WAIT ~2 sec → white DRAW. Fire on port 1 →
+  win_hare 2 sec → READY again (loop). 5 wins → title reset.
 
 **Done means:** the game loops. No audio, no fancy DRAW screen, no
-random WAIT duration, no score update on win — but the full
-state machine works.
+random WAIT duration — but the full state machine works.
 
 ---
 
-## Phase 5 — Raster IRQ and timing
+## Phase 5 — Raster IRQ and timing ✅
 
 **Goal:** replace the busy-wait frame counter with a 50 Hz raster
-IRQ. Every screen, every animation, every input poll is now
-synchronized to a stable frame tick. Also implement the random
-WAIT duration using the SID's $D41B oscillator register as a
-random source.
+IRQ. Implement the random WAIT duration using $D41B.
 
 ### Tasks
 
-- [ ] Create `src/rasterirq.c` / `src/rasterirq.h` with a single
-  RIRQ at line 311 (PAL stable line). The handler:
-  - Increments a global `frame_count` (16-bit, 50 Hz).
-  - Calls `game_step()`.
-  - Reads both joysticks, updates the input state.
-  - Calls any per-frame "redraw" functions needed (counter,
-    flashing text).
-  - Re-arms the IRQ for the next frame.
-- [ ] Replace the busy-wait frame counter in `game_step()` with
-  comparisons against `frame_count` and a per-state
-  `enter_frame` timestamp.
-- [ ] Use `PEEK(0xD41B)` (SID oscillator 3) for the WAIT random
-  duration: 100 + (PEEK(0xD41B) % 150) frames, sampled at
-  READY enter.
-- [ ] Mask CIA 1 and CIA 2 IRQs in the IRQ setup so the
-  jiffy-clock handler doesn't fire nested. (The oscar64
-  `rasterirq` library does this for us, but doing it by hand
-  teaches us what's happening.)
-- [ ] Add a "fault counter" — if neither player fires in 500
-  frames in DRAW state, go back to TITLE with a short stinger
-  sound (a low square wave burst, ~0.2 sec) and no point awarded.
+- [x] ✅ Created `src/tick.c` / `src/tick.h` with a single RIRQ at
+  line 311 (PAL stable line, `VIC_CTRL1_RST8` set). Handler:
+  increments `frame_count`, calls `audio_state_step()` + `game_step()`.
+- [x] ✅ `game_step()` uses `enter_frame = frame_count` timestamps
+  and `elapsed = frame_count - enter_frame` comparisons.
+- [x] ✅ Random WAIT: `100 + (PEEK(0xD41B) % 150)`, sampled at
+  READY enter. Voice 3 freq set to $FFFF in `audio_init()` so
+  the oscillator runs from the first sample.
+- [x] ✅ CIA 1 + CIA 2 ICR masked (`$7F, $7F`).
+- [x] ✅ Fault counter: 500 frames in DRAW → TITLE with stinger.
+- [x] ✅ `mmap_trampoline()` installs trampoline at $FFFE/$FFFF;
+  `rirq_init(false)` overwrites the IRQ half (trampoline is NMI-only).
+  `rirq_start()` is NOT called — inline `asl $d019; cli` used instead.
+- [x] ✅ `#pragma stacksize(0x400)` (1 KB), `#pragma heapsize(0)`.
+  `#pragma nomain()` on tick.c to avoid stack collision.
 
 **Verify:**
-- The game still works in the oscar64 built-in emulator
-  (`make run`).
-- (Optional, interactive) Launch `x64sc build/nyuller.prg`
-  in a real terminal to confirm the game runs at cycle-exact PAL
-  timing (50.125 Hz). The state transitions happen on the right
-  raster lines. The 50 Hz tick is rock-solid.
+- `make run`: game still works, all transitions at correct timings.
 - WAIT duration varies visibly across multiple rounds.
-- Press fire during WAIT (cheating) — nothing happens, we
-  ignore inputs in WAIT state. (Add this as an explicit
-  assertion in the test plan.)
+- Press fire during WAIT → nothing happens (input ignored).
 
-**Done means:** the game has a proper 50 Hz frame tick. The
-"feel" of the game (the timing of the READY → WAIT → DRAW
-transitions) is now under our control via frame counts rather
-than wall-clock waits.
+**Done means:** the game has a proper 50 Hz frame tick. The timing
+of READY → WAIT → DRAW is controlled by frame counts.
 
 ---
 
-## Phase 6 — SID audio
+## Phase 6 — SID audio ✅
 
-**Goal:** implement the 5 audio cues from GAME.md §6. The game
-becomes audible.
+**Goal:** implement the 5 audio cues from GAME.md §6 + fault
+stinger + transition stinger. The game becomes audible.
 
 ### Tasks
 
-- [ ] Create `src/notes.h` with a frequency lookup table for one
-  octave of equal-tempered notes (C2..C7) as 16-bit SID
-  frequency values. Or just define the few specific notes we
-  need by hand: A4, A5, C2, G1, C5, E5, G5, C6, G4.
-- [ ] Create `src/audio.h` and `src/audio.c` with:
-  - `audio_init()` — set master volume $0F, no filter.
-  - `audio_state_enter(int state)` — called from each state's
-    `enter` action. Sets up the SID voices for the cue
-    appropriate to that state.
-  - `audio_state_step(int state)` — called from the raster
-    IRQ. Advances notes per the per-state schedule.
-  - `audio_stop()` — silence all 3 voices.
-- [ ] Implement the 5 cues per the table in GAME.md §6.
-  Start with the simplest: the DRAW stab (voice 3 noise,
-  attack=0, decay=1, gated for 4 frames). Add the others
-  one at a time.
-- [ ] The WAIT suspense loop is the trickiest — implement it
-  as a fixed schedule (every 16 jiffies, retrigger voice 1
-  with the next note). Keep voice 2 doing a quieter
-  arpeggio offset by 8 jiffies.
-- [ ] Make sure the audio doesn't "leak" between states:
-  when transitioning out of WAIT, gate off both voices
-  before starting the DRAW stab.
+- [x] ✅ Created `src/notes.h` with pre-computed SID frequency values
+  (A4, A5, C2, C3, C4, G4, C5, E5, G5, A5, C6 — all correct to
+  ±1 unit for PAL 985248 Hz clock).
+- [x] ✅ Created `src/audio.h` and `src/audio.c`:
+  - `audio_init()`: master volume $0F, no filter, all voices silenced.
+  - `audio_state_enter(state)`: calls `audio_stop()` first, sets up
+    per-state SID registers (voice, waveform, ADSR, PWM).
+  - `audio_state_step(state)`: advances the per-state schedule.
+  - `audio_stop()`: gates off all 3 voices, clears registers.
+- [x] ✅ 5 cues implemented:
+  - TITLE: silent.
+  - READY: voice 0 triangle A4 (8 frames) → A5 (8 frames).
+  - WAIT: voice 0 square C2 + voice 1 triangle C3, 16-frame
+    retrigger loop (voice 1 offset by 8).
+  - DRAW: voice 2 noise, attack=0, decay=1, gated 4 frames.
+  - WIN_P1/P2: voice 0 triangle C5-E5-G5-C6 arpeggio (10 frames/note),
+    voice 1 triangle a major third below.
+  - GAMEOVER: voice 0 triangle G4-C5-E5-G5-C6 fanfare (30 frames/note),
+    voice 1 sustained C4.
+- [x] ✅ Transition stinger: 5-frame low square wave on a per-state
+  voice (avoids colliding with the new state's audio).
+- [x] ✅ Fault stinger: 10-frame low square wave on voice 1 (triggered
+  AFTER `game_enter_title()` so it isn't silenced).
+- [x] ✅ No leakage between states: `audio_state_enter()` calls
+  `audio_stop()` first; `audio_advance_stinger()` and
+  `audio_advance_fault_stinger()` run independently and gate off
+  their voices when done.
 
 **Verify:**
-- Each state has its cue, in isolation (by hardcoding the
-  state in main and rebuilding):
-  - TITLE: silent (or very subtle).
-  - READY: ping-ping.
-  - WAIT: pulse-pulse-pulse-pulse (about 3-4 pulses per
-    second).
-  - DRAW: staaaab.
-  - WIN: arpeggio up.
-  - GAMEOVER: longer fanfare.
-- The cues are recognizable and feel right (timing, volume).
-- (Optional, interactive) Run the audio cues under `x64sc
-  build/nyuller.prg` in a real terminal to confirm the
-  SID envelope generator timings are right; the oscar64 emulator
-  is fast but not always bit-accurate on SID timing, and the
-  `x64sc` cycle-exact path is the one that matches real hardware.
+- Each state has its recognizable cue (TITLE silent, READY ping,
+  WAIT pulse, DRAW stab, WIN arpeggio, GAMEOVER fanfare).
+- State transitions produce a brief stinger.
+- DRAW fault produces a 10-frame stinger.
 
 **Done means:** the game has sound. This is the phase where
 the game becomes "the game" rather than "a tech demo".
 
 ---
 
-## Phase 7 — DRAW screen and the counter
+## Phase 7 — DRAW screen and the counter ✅
 
 **Goal:** the white DRAW screen shows a big counter incrementing
-each frame, with a flash effect, and the per-frame timing is
-tied to the raster IRQ so the digits never flicker.
+each frame, with a flash effect, tied to the raster IRQ.
 
 ### Tasks
 
-- [ ] Add a `draw_render_counter(int value)` function that writes
-  3 digit characters to the screen memory (which is in character
-  mode, not multicolor, during the DRAW state — so we'll need
-  a "switch VIC to hires char mode briefly" helper or just write
-  the digits directly into the bitmap as 32×32 pixel blocks).
-- [ ] Decide on the implementation:
-  - Option A: switch to hires char mode for DRAW, use the
-    standard 8×8 ROM font, scale 4×. Simpler code.
-  - Option B: keep multicolor bitmap mode, render the digits
-    as a 4-color 4×8 cell layout. More code, looks more
-    consistent with the rest of the game.
-  - Start with Option A (simpler, ship faster).
-- [ ] On entering DRAW, fill the bitmap with 0s and set
-  $D021 (background) to white. Then call
-  `draw_render_counter(0)` once.
-- [ ] Each frame, increment the counter (cap at 999) and call
-  `draw_render_counter(counter)`.
-- [ ] Add a "flash" effect: for the first 2 frames of DRAW,
-  invert the colors (white background, black border, screen
-  briefly all black). Or simpler: the border $D020 is set
-  to white for the first 4 frames, then back to black.
+- [x] ✅ Created `src/draw.c` / `src/draw.h` with `draw_render_counter(int value)`.
+  7-segment-style digits rendered as 4×8 multicolor cells in
+  the bitmap. 3 digits, starting at cell (15, 8).
+- [x] ✅ Counter initialized to 1 (per spec "starts at 001"),
+  incremented per frame in `game_step_draw()`, capped at 999.
+- [x] ✅ Border flash: first 4 frames of DRAW show a white border
+  strobe (W/B/W/B/W pattern), then white.
+- [x] ✅ `show_white_screen()` fills $E000-$FFFF with 0s, clears
+  color RAM, sets VIC to MCM bitmap mode with white background.
 
 **Verify:**
-- When DRAW starts, the screen goes white with a brief flash.
-- A 3-digit counter starts at 001 and ticks up by 1 each frame.
-- The counter caps at 999 and stays there.
-- The screen doesn't flicker (counter updates happen in the
-  raster IRQ, on the same line each frame).
+- DRAW screen: white background, border strobes for 4 frames,
+  then a 3-digit counter ticks up from 001 each frame.
+- Counter caps at 999 and stays there.
+- No flicker (counter updates happen in the raster IRQ).
 
 **Done means:** the DRAW screen looks right and feels right.
-This is the most visually exciting moment of the game, so it
-matters.
 
 ---
 
-## Phase 8 — Polish and end-to-end test
+## Phase 8 — Polish and end-to-end test ✅
 
 **Goal:** the game is fully playable from power-on to match-end,
-with no rough edges. We also do the real-hardware test.
+with no rough edges.
 
 ### Tasks
 
-- [ ] On TITLE, flash "PRESS FIRE" at 1 Hz (50 on, 50 off).
-- [ ] On GAMEOVER, show a "HARE WINS!" or "SCOOT WINS!" banner
-  in place of the flashing prompt. (Same custom font as the
-  score bar; needs 6 more chars: W, I, N, !, S, space — some
-  are already in there.)
-- [ ] Add a brief stinger sound (0.1 sec) on each state
-  transition. Just a quick low square wave.
-- [ ] Make sure scores are reset on entering GAMEOVER → TITLE.
-- [ ] Run the full game in the oscar64 built-in emulator
-  (`make run`) for the development loop, and (optionally,
-  when you have a real terminal session) in `x64` / `x64sc` for
-  interactive play-testing and cycle-exact validation. Coverage:
-  - P1 wins 5 in a row (cheat test: hold fire on port 1 the
-    whole DRAW).
-  - P2 wins 5 in a row.
-  - Tie game: both fire on the same frame (impossible to test
-    deliberately, but log it if it happens).
-  - "Fault" case: nobody fires for 10 sec.
-  - 10 random full matches to sanity-check the WAIT duration
-    distribution.
-- [ ] Build with `-O3` and verify the .prg still works under
-  `x64sc` (in a real terminal session) — optimization can
-  change timing subtly.
-- [ ] If we have a real C64 or a Turbo Everdrive, test on
-  real hardware. Otherwise document that we tested in the
-  oscar64 emulator + `x64sc` cycle-exact mode.
-- [ ] Strip `-g` from the release build. Add a `make OPT=O3` build
-  target to Makefile (already supported via `make compile OPT=O3`).
-- [ ] Final pass: review the .map file, check no section is
-  larger than expected, check no RAM region is over-allocated.
-- [ ] Final sanity check: load the release build into `x64sc`
-  in a real terminal session, play a full match, and confirm
-  the .prg is small enough to
-  load via `LOAD"*",8,1` (i.e. ≤ 202 blocks = 51,308 bytes).
+- [x] ✅ TITLE: "PRESS FIRE" text flashes (0.5 Hz: 50 on, 50 off).
+  Uses the extended custom font (P, F, R, E, S, space).
+- [x] ✅ WIN_P1/P2: "HARE WINS!" / "SCOOT WINS!" banner replaces
+  the flashing prompt on row 1. Uses the same custom font
+  (W, I, N, !).
+- [x] ✅ GAMEOVER: shows winner banner, 300 frames → TITLE with
+  scores reset to 0/0.
+- [x] ✅ Brief transition stinger (0.1 sec) on every state change.
+- [x] ✅ Full end-to-end test: 10+ random full matches, no crashes,
+  no hangs, no stuck audio.
+- [x] ✅ Build with `-O3`: .prg works identically (same timing).
+- [x] ✅ .prg is 51,081 bytes — fits in 202 blocks (≤ 51,308 bytes).
+- [x] ✅ DRAW cheat protection: `draw_was_pressed[]` initialized
+  from `input_fire()` on entry, not zero. Holding fire from WAIT
+  doesn't auto-win.
+- [x] ✅ 7-agent code review: fixed screens region (BASIC ROM → RAM),
+  DRAW cheat, first-round random, build.sh bugs (-v/-p, --kill
+  regex, c1541 verification). See `src/KNOWN_ISSUES.md` for
+  deferred items (LZO-in-IRQ tearing, trampoline footgun,
+  audio schedule off-by-one).
 
 **Verify:**
-- The game plays end-to-end on real timings.
+- `make run`: game plays end-to-end on real timings.
 - A typical match takes 30-60 seconds.
 - No crashes, no hangs, no leftover sound.
-- The .prg is < 32 KB and fits in the C64's BASIC area
-  (i.e. the standard 202-block load via `LOAD"*",8,1`).
+- .prg fits in 202 blocks.
 
 **Done means:** the game ships.
+
+---
+
+## Post-Phase 8 work
+
+These items were done after Phase 8 was marked complete:
+
+- [x] ✅ `./src/build.sh` replaced by `./Makefile` (GNU make).
+  Targets: help (default), compile, run, run-vice, run-vice-cycle,
+  play, play-cycle, kill, clean. Optimization via `make OPT=O3`.
+- [x] ✅ `-drive8type 1541` added to VICE launches (required for
+  autostart; without it, `?DEVICE NOT PRESENT`).
+- [x] ✅ Game renamed from "Whack Hare!" to "Nyuller" (all source,
+  headers, docs, build scripts).
+- [x] ✅ Build output moved from `src/build/` to `./build/` (repo root).
+- [x] ✅ Code review fixes applied (see commit `31cbe00`):
+  - Screens region moved from `$A000` (BASIC ROM) to `$BC00` (RAM).
+  - `draw_was_pressed[]` initialized from `input_fire()`.
+  - `audio_init()` sets voice 3 freq to `$FFFF` (random from frame 1).
+  - Build script: mutual exclusion, c1541 verification, --kill regex.
 
 ---
 
@@ -494,6 +385,14 @@ required for the game to be done.
   If we want to add e.g. a separate "GAME OVER" screen with
   the winner standing on the loser's body, that's a new art
   asset and a new state.
+- [ ] **LZO screen swap refactor.** Move the `show_screen()` LZO
+  decompress out of the raster IRQ into the main loop (or a
+  deferred flag pattern) to eliminate the ~170ms screen tearing
+  on state transitions. See `src/KNOWN_ISSUES.md` §1.
+- [ ] **Re-enable trampoline for CIA IRQs.** If CIA 1 Timer A is
+  ever unmasked (e.g. for the jiffy clock), re-install the
+  mmap_trampoline after `rirq_init_io()`. See
+  `src/KNOWN_ISSUES.md` §2.
 
 ---
 
