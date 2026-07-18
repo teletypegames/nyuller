@@ -377,6 +377,64 @@ with ~10+ colors per block vs the current 160×200 with 4 colors per cell.
 - NUFLI uses all 8 sprites (no sprites for game objects)
 - Static screens don't need game logic, so NUFLI is perfect
 
+### Art Direction: Shared Backgrounds
+
+**Problem:** Current source images have completely different backgrounds.
+Only 2-4% pixel-identical across screens. NUFLI output is only 40% shared.
+
+**Solution:** All screens should share the same background (or a small set).
+Only foreground elements (characters, text, UI) should vary between screens.
+
+**Recommendation for artist:**
+1. Pick one background (e.g., the sunset/landscape from the title screen)
+2. Use it as the base for ALL static screens
+3. Only vary foreground elements (characters, text overlays)
+4. With shared backgrounds, NUFLI overlap should reach 80-90%
+
+**Expected impact:** With shared backgrounds, storing one base + per-screen
+delta becomes practical (~10KB base + ~5KB per screen delta vs 23KB each).
+
+### Scanline Rendering
+
+**Problem:** Each NUFLI screen is 23KB. Even with shared backgrounds,
+fitting multiple screens in 64KB RAM is tight.
+
+**Solution:** Render with scanlines (every other line dark/black).
+This creates a retro CRT aesthetic while reducing the effective pixel data.
+
+**Approach:**
+1. Pre-process source images: darken every other scanline before conversion
+2. The scanlined image has ~50% dark pixels → NUFLI bitmap has more uniform blocks
+3. Mufflon's conversion produces more shared data between screens
+4. Visual quality: retro CRT look, acceptable for static screens
+
+**Implementation:**
+- `tools/apply_scanlines.py` pre-processes PNGs before Mufflon conversion
+- `make nufli` pipeline: PNG → scanlined BMP → Mufflon → .nuf → delta encoding
+
+### Delta Encoding
+
+**Problem:** Even with scanlines, storing all NUFLI screens in 64KB RAM is tight.
+
+**Solution:** Delta encoding with bitmask format:
+- Store a shared base (consensus across all screens) once
+- Store per-screen deltas as bitmask + differing values
+
+**Format:**
+- Base: 23040 bytes (consensus data)
+- Delta: 2880 bytes bitmask + N bytes values
+- Each set bit in bitmask = byte differs from base
+
+**Results (with scanlines):**
+- Raw: 5 × 23040 = 115200 bytes
+- Encoded: 23040 (base) + 45969 (deltas) = 69009 bytes
+- Savings: 40.1%
+
+**Memory layout:**
+- Base (23KB) at $1000-$7FFF (NUFLI display region)
+- Title delta (7KB) at $A000-$BFFF (BASIC ROM area)
+- Other deltas: TODO (disk loading or art direction to reduce size)
+
 ### Implementation Steps
 
 #### Step 1: NUFLI display routine integration

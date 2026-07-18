@@ -148,39 +148,44 @@ NUFLI_SCREENS := screen_title screen_waiting1 screen_waiting_2 screen_win_hare s
 
 # Generated files
 NUFLI_NUF_FILES := $(addprefix $(NUFLI_OUT_DIR)/,$(addsuffix .nuf,$(NUFLI_SCREENS)))
-NUFLI_ASM_FILES := $(addprefix $(NUFLI_OUT_DIR)/,$(addsuffix .asm,$(NUFLI_SCREENS)))
-NUFLI_HDR_FILES := $(addprefix $(NUFLI_OUT_DIR)/,$(addsuffix .h,$(NUFLI_SCREENS)))
+NUFLI_DELTA_FILES := $(addprefix $(NUFLI_OUT_DIR)/,$(addsuffix .delta,$(NUFLI_SCREENS)))
+NUFLI_BASE_FILE := $(NUFLI_OUT_DIR)/nufli_base.base
 
-# Build all NUFLI images
-nufli: $(NUFLI_ASM_FILES) $(NUFLI_HDR_FILES)
-	@echo "NUFLI images built in $(NUFLI_OUT_DIR)/"
+# Build all NUFLI images (delta encoded)
+nufli: $(NUFLI_BASE_FILE) $(NUFLI_DELTA_FILES)
+	@echo "NUFLI delta-encoded images built in $(NUFLI_OUT_DIR)/"
+	@ls -la $(NUFLI_BASE_FILE) $(NUFLI_DELTA_FILES) | awk '{print $$5, $$9}'
 
 # Clean NUFLI artifacts
 nufli-clean:
-	@rm -f $(NUFLI_OUT_DIR)/*.nuf $(NUFLI_OUT_DIR)/*.asm $(NUFLI_OUT_DIR)/*.h
-	@rm -f $(NUFLI_OUT_DIR)/*.bmp
+	@rm -f $(NUFLI_OUT_DIR)/*.nuf $(NUFLI_OUT_DIR)/*.delta $(NUFLI_OUT_DIR)/*.base
+	@rm -f $(NUFLI_OUT_DIR)/*.bmp $(NUFLI_OUT_DIR)/*.asm $(NUFLI_OUT_DIR)/*.h
 	@echo "cleaned NUFLI images"
 
-# PNG → BMP (Mufflon needs BMP input)
-$(NUFLI_OUT_DIR)/%.bmp: $(NUFLI_SRC_DIR)/%.png | ensure-build-dir
+# Explicit rules for each screen (no pattern chain, no intermediate files)
+# Apply scanlines: darken every other row for CRT effect + smaller NUFLI output
+define NUFLI_RULES
+$(NUFLI_OUT_DIR)/$(1).bmp: $(NUFLI_SRC_DIR)/$(1).png | ensure-build-dir
 	@mkdir -p $(NUFLI_OUT_DIR)
-	@echo "converting $< -> $@"
-	@python3 -c "from PIL import Image; Image.open('$<').resize((320,200), Image.LANCZOS).save('$@')"
+	@echo "converting $$< -> $$@ (with scanlines)"
+	@python3 $(TOOLS_DIR)/apply_scanlines.py $$< $$@
 
-# BMP → NUFLI (.nuf)
-$(NUFLI_OUT_DIR)/%.nuf: $(NUFLI_OUT_DIR)/%.bmp | ensure-mufflon
-	@echo "converting $< -> $@"
-	@$(MUFFLON_BIN) $< -o $@ --shutup
+$(NUFLI_OUT_DIR)/$(1).nuf: $(NUFLI_OUT_DIR)/$(1).bmp | ensure-mufflon
+	@echo "converting $$< -> $$@"
+	@$(MUFFLON_BIN) $$< -o $$@ --shutup
+endef
 
-# NUFLI → Assembly (.asm + .h)
-$(NUFLI_OUT_DIR)/%.asm $(NUFLI_OUT_DIR)/%.h: $(NUFLI_OUT_DIR)/%.nuf
-	@echo "converting $< -> $@ + $(basename $@).h"
-	@python3 $(TOOLS_DIR)/nuf_to_asm.py $< $(NUFLI_OUT_DIR)/$*
+$(foreach screen,$(NUFLI_SCREENS),$(eval $(call NUFLI_RULES,$(screen))))
+
+# Delta encoding: all .nuf files -> base + per-screen deltas
+$(NUFLI_BASE_FILE) $(NUFLI_DELTA_FILES) &: $(NUFLI_NUF_FILES)
+	@echo "delta encoding $(words $(NUFLI_NUF_FILES)) screens..."
+	@python3 $(TOOLS_DIR)/nufli_delta.py $(NUFLI_OUT_DIR)/nufli_base $(NUFLI_NUF_FILES)
 
 # ============================================================
 # $(PRG) — compile main.c → nyuller.prg
 # ============================================================
-$(PRG): $(SRC_FILES) $(HDR_FILES) $(NUFLI_ASM_FILES) | ensure-build-dir ensure-oscar64
+$(PRG): $(SRC_FILES) $(HDR_FILES) $(NUFLI_BASE_FILE) $(NUFLI_DELTA_FILES) | ensure-build-dir ensure-oscar64
 	@echo "compiling $(SRC) with $(OSCAR64_BIN) -> $(BUILD_DIR)/"
 	cd "$(SRC_DIR)" && "$(OSCAR64_BIN)" -i="$(OSCAR64_DIR)/include" -o="$(PRG)" $(OPT_FLAGS) "$(SRC)"
 

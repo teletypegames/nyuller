@@ -28,6 +28,7 @@
 #include "score.h"
 #include "banner.h"
 #include "draw.h"
+#include "nufli.h"
 #include <c64/vic.h>
 #include <c64/sid.h>
 
@@ -161,26 +162,20 @@ static byte last_winner;
 
 static void game_enter_title(void)
 {
-	show_screen(SCREEN_TITLE);
+	// Use NUFLI for title screen (higher quality)
+	nufli_show(NUFLI_SCREEN_TITLE);
+	nufli_exit();
+
+	show_screen(SCREEN_TITLE);  // Restore multicolor mode
 	score_p1 = 0;
 	score_p2 = 0;
 	score_render();
-	// "PRESS FIRE" prompt: drawn in row 1 (below the score bar) of
-	// the title screen.  Re-rendered on every TITLE entry so it
-	// stays visible after any state that may have overwritten the
-	// row (only GAMEOVER writes row 1, but show_screen() re-loads
-	// the full title bitmap which overwrites it with the title
-	// art — so we always re-render the prompt here).
 	banner_render("PRESS FIRE", 1);
 	enter_frame = frame_count;
 	title_input = TITLE_IDLE;
 	title_first_frame = 0;
-	// Border starts white (the "PRESS FIRE" prompt is visible).
-	// The per-frame flash in game_step_title() toggles it at 1 Hz
-	// (50 frames on, 50 frames off).
 	vic.color_border = 1;
 	audio_state_enter(STATE_TITLE);
-	// 5-frame transition stinger on voice 0 (free in TITLE).
 	audio_play_stinger(stinger_voice_for_state(STATE_TITLE), STINGER_DURATION);
 }
 
@@ -240,7 +235,11 @@ static void game_enter_draw(void)
 
 static void game_enter_win_p1(void)
 {
-	show_screen(SCREEN_WIN_HARE);
+	// Use NUFLI for win screen (higher quality)
+	nufli_show(NUFLI_SCREEN_WIN_HARE);
+	nufli_exit();
+
+	show_screen(SCREEN_WIN_HARE);  // Restore multicolor mode
 	score_p1++;
 	score_render();
 	banner_clear(1);
@@ -248,13 +247,16 @@ static void game_enter_win_p1(void)
 	vic.color_border = 0;
 	last_winner = 1;
 	audio_state_enter(STATE_WIN_P1);
-	// 5-frame transition stinger on voice 2 (free in WIN).
 	audio_play_stinger(stinger_voice_for_state(STATE_WIN_P1), STINGER_DURATION);
 }
 
 static void game_enter_win_p2(void)
 {
-	show_screen(SCREEN_WIN_SCOOT);
+	// Use NUFLI for win screen (higher quality)
+	nufli_show(NUFLI_SCREEN_WIN_SCOOT);
+	nufli_exit();
+
+	show_screen(SCREEN_WIN_SCOOT);  // Restore multicolor mode
 	score_p2++;
 	score_render();
 	banner_clear(1);
@@ -262,22 +264,18 @@ static void game_enter_win_p2(void)
 	vic.color_border = 0;
 	last_winner = 2;
 	audio_state_enter(STATE_WIN_P2);
-	// 5-frame transition stinger on voice 2 (free in WIN).
 	audio_play_stinger(stinger_voice_for_state(STATE_WIN_P2), STINGER_DURATION);
 }
 
 static void game_enter_gameover(void)
 {
+	// Use NUFLI for gameover screen (higher quality)
+	nufli_show(NUFLI_SCREEN_GAMEOVER);
+	nufli_exit();
+
 	// Show the title screen with the final scores still displayed
-	// (5 : x or x : 5) and the winner banner ("HARE WINS!" or
-	// "SCOOT WINS!") in row 1 below the score bar.  Scores are not
-	// reset here — they reset on the next TITLE entry.
-	show_screen(SCREEN_TITLE);
+	show_screen(SCREEN_TITLE);  // Restore multicolor mode
 	score_render();
-	// "HARE WINS!" or "SCOOT WINS!" — driven by last_winner set in
-	// game_enter_win_p1/p2.  show_screen(SCREEN_TITLE) just
-	// reloaded the title bitmap, so row 1 currently has the title
-	// art; banner_render() will clear and overwrite it.
 	if (last_winner == 1)
 		banner_render("HARE WINS!", 1);
 	else
@@ -285,7 +283,6 @@ static void game_enter_gameover(void)
 	enter_frame = frame_count;
 	vic.color_border = 0;
 	audio_state_enter(STATE_GAMEOVER);
-	// 5-frame transition stinger on voice 2 (free in GAMEOVER).
 	audio_play_stinger(stinger_voice_for_state(STATE_GAMEOVER), STINGER_DURATION);
 }
 
