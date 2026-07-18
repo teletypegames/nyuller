@@ -1,5 +1,5 @@
-#ifndef WHACK_HARE_DRAW_H
-#define WHACK_HARE_DRAW_H
+#ifndef NYULLER_DRAW_H
+#define NYULLER_DRAW_H
 
 // draw.h — DRAW screen counter rendering.
 //

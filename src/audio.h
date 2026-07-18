@@ -1,7 +1,7 @@
-#ifndef WHACK_HARE_AUDIO_H
-#define WHACK_HARE_AUDIO_H
+#ifndef NYULLER_AUDIO_H
+#define NYULLER_AUDIO_H
 
-// audio.h — SID audio service for the Whack Hare! state machine.
+// audio.h — SID audio service for the Nyuller state machine.
 //
 // The audio layer is a thin state-driven service: the game's per-state
 // "enter" actions call audio_state_enter() to set up the SID for that

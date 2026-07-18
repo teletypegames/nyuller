@@ -1,4 +1,4 @@
-// audio.c — SID audio service for the Whack Hare! state machine.
+// audio.c — SID audio service for the Nyuller state machine.
 //
 // The audio layer is a thin state-driven service.  The game's
 // per-state "enter" actions call audio_state_enter() to set up the

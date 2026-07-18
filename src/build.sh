@@ -2,7 +2,7 @@
 # build.sh — compile and optionally run a single C64 program with Oscar64.
 #
 # Usage:
-#   ./build.sh            # compile main.c → build/whack_hare.prg (-O1)
+#   ./build.sh            # compile main.c → build/nyuller.prg (-O1)
 #   ./build.sh -e         # run in oscar64's built-in emulator (headless, fast)
 #   ./build.sh -p         # PLAY: compile, wrap in .d64, launch VICE x64 detached
 #   ./build.sh -P         # PLAY: same as -p but with VICE x64sc (cycle-exact)
@@ -17,11 +17,11 @@
 #   ./build.sh -g         # compile with -g (adds source-level debug info)
 #
 # Output (in <repo>/build/):
-#   whack_hare.prg   — loadable C64 program (run with x64, VICE, or real hw)
-#   whack_hare.asm   — full 6502 listing
-#   whack_hare.map   — region/section/object placement
-#   whack_hare.lbl   — VICE monitor label commands
-#   whack.d64        — disk image wrapping whack_hare.prg (for VICE autostart)
+#   nyuller.prg        — loadable C64 program (run with x64, VICE, or real hw)
+#   nyuller.asm        — full 6502 listing
+#   nyuller.map        — region/section/object placement
+#   nyuller.lbl        — VICE monitor label commands
+#   nyuller.d64        — disk image wrapping nyuller.prg (for VICE autostart)
 #
 # For the development loop, use -e (oscar64's built-in emulator). It runs
 # without a display, needs no ROMs, and is faster than VICE. Use -p when
@@ -48,8 +48,8 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OSCAR64_DIR="$ROOT/oscar64"
 OSCAR64_BIN="$OSCAR64_DIR/bin/oscar64"
 BUILD_DIR="$ROOT/build"
-PRG="$BUILD_DIR/whack_hare.prg"
-D64="$BUILD_DIR/whack.d64"
+PRG="$BUILD_DIR/nyuller.prg"
+D64="$BUILD_DIR/nyuller.d64"
 
 mkdir -p "$BUILD_DIR"
 
@@ -58,14 +58,14 @@ if [ "${1:-}" = "--kill" ]; then
 	# pgrep -f uses ERE: + is a quantifier, so the regex must escape it.
 	# x64(sc)? matches both "x64" and "x64sc".  The process is launched
 	# with the literal argument string `+confirmonexit`.
-	pids=$(pgrep -f "x64(sc)? \+confirmonexit.*whack\.d64" 2>/dev/null || true)
+	pids=$(pgrep -f "x64(sc)? \+confirmonexit.*nyuller\.d64" 2>/dev/null || true)
 	if [ -n "$pids" ]; then
 		echo "killing VICE process(es): $pids"
 		kill $pids 2>/dev/null || true
 		sleep 1
 		kill -9 $pids 2>/dev/null || true
 	else
-		echo "no VICE process running (autostart of whack.d64)"
+		echo "no VICE process running (autostart of nyuller.d64)"
 	fi
 	rm -f "$BUILD_DIR/vice.pid" "$BUILD_DIR/vice.log"
 	exit 0
@@ -132,11 +132,11 @@ build_d64() {
 		echo "error: c1541 not found (needed to build the .d64 wrapper)" >&2
 		return 1
 	fi
-	c1541 -format wh,of d64 "$D64" >/dev/null 2>&1 || true
+	c1541 -format ny,of d64 "$D64" >/dev/null 2>&1 || true
 	c1541 "$D64" >/dev/null 2>&1 <<EOF || true
 write $PRG
 EOF
-	if c1541 "$D64" 2>/dev/null <<EOF | grep -q "whack_hare.prg"
+	if c1541 "$D64" 2>/dev/null <<EOF | grep -q "nyuller.prg"
 list
 quit
 EOF
@@ -151,7 +151,7 @@ EOF
 # --- optional actions -----------------------------------------------------
 case "$EMU_CMD" in
 	"oscar64")
-		echo "running whack_hare.prg in oscar64's built-in emulator"
+		echo "running nyuller.prg in oscar64's built-in emulator"
 		"$OSCAR64_BIN" -i="$OSCAR64_DIR/include" -o="$PRG" $OPT_FLAGS -e "$SRC"
 		;;
 	"x64"|"x64sc")
@@ -160,7 +160,7 @@ case "$EMU_CMD" in
 		if [ -z "${DISPLAY:-}" ]; then
 			echo "warning: no \$DISPLAY set; VICE won't show a window" >&2
 		fi
-		echo "running whack_hare in VICE ($EMU_CMD, blocking)"
+		echo "running nyuller in VICE ($EMU_CMD, blocking)"
 		"$EMU_CMD" +confirmonexit -autostart "$D64"
 		;;
 esac
@@ -176,9 +176,9 @@ if [ -n "$PLAY_VICE" ]; then
 	fi
 	# If a previous VICE is still running, kill it before launching a
 	# new one — otherwise the two windows will fight for the same
-	# display and the old one's whack_hare will keep running in the
+	# display and the old one's nyuller will keep running in the
 	# background.
-	existing=$(pgrep -f "x64(sc)? \+confirmonexit.*whack\.d64" 2>/dev/null || true)
+	existing=$(pgrep -f "x64(sc)? \+confirmonexit.*nyuller\.d64" 2>/dev/null || true)
 	if [ -n "$existing" ]; then
 		echo "killing previous VICE process(es): $existing"
 		kill $existing 2>/dev/null || true

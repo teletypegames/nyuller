@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert a C64 game source PNG into multicolor-bitmap .bin + .attr files.
 
-Phase 1 of the "Whack Hare!" C64 project. See tasks.md for the full spec.
+Phase 1 of the "Nyuller" C64 project. See tasks.md for the full spec.
 
 The C64 multicolor bitmap mode (VIC-II $D011 BMM=1, $D016 MCM=1) is a
 160x200-pixel, 2-bits-per-pixel, 4-colors-per-4x8-cell format. The

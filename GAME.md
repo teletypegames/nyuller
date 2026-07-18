@@ -1,4 +1,4 @@
-# GAME.md — *Whack Hare!*
+# GAME.md — *Nyuller*
 
 A two-player reaction-time duel for the Commodore 64. Two players stand
 back-to-back, take ten paces, and the first one to hit fire when the

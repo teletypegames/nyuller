@@ -1,5 +1,5 @@
-#ifndef WHACK_HARE_INPUT_H
-#define WHACK_HARE_INPUT_H
+#ifndef NYULLER_INPUT_H
+#define NYULLER_INPUT_H
 
 // input_fire(port) — returns 1 if the fire button on the given joystick
 // port is currently pressed, 0 otherwise.

@@ -1,5 +1,5 @@
-#ifndef WHACK_HARE_SCORE_H
-#define WHACK_HARE_SCORE_H
+#ifndef NYULLER_SCORE_H
+#define NYULLER_SCORE_H
 
 // score.h — score state and rendering for the top-of-screen score bar.
 //

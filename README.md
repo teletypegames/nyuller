@@ -32,7 +32,7 @@ git submodule update --init --recursive
 
 ```sh
 cd src
-./build.sh            # compile main.c → build/whack_hare.prg (-O1)
+./build.sh            # compile main.c → build/nyuller.prg (-O1)
 ./build.sh -e         # run in oscar64's built-in emulator (headless, fast)
 ./build.sh -p         # PLAY: launch VICE in background (see build.sh --help)
 ./build.sh -v         # run in VICE x64 (foreground, blocks terminal)

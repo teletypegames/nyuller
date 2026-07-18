@@ -1,5 +1,5 @@
-#ifndef WHACK_HARE_NOTES_H
-#define WHACK_HARE_NOTES_H
+#ifndef NYULLER_NOTES_H
+#define NYULLER_NOTES_H
 
 // notes.h — 16-bit SID frequency values for the musical notes used by
 // the game.  PAL C64 (985248 Hz system clock); see the oscar64 sid.h

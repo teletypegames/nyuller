@@ -1,5 +1,5 @@
-#ifndef WHACK_HARE_TICK_H
-#define WHACK_HARE_TICK_H
+#ifndef NYULLER_TICK_H
+#define NYULLER_TICK_H
 
 // tick.h — 50 Hz raster IRQ setup for the game tick.
 //

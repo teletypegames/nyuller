@@ -1,5 +1,5 @@
-#ifndef WHACK_HARE_BANNER_H
-#define WHACK_HARE_BANNER_H
+#ifndef NYULLER_BANNER_H
+#define NYULLER_BANNER_H
 
 // banner.h — text banner rendering in the multicolor bitmap.
 //

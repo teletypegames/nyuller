@@ -1,7 +1,7 @@
-#ifndef WHACK_HARE_GAME_H
-#define WHACK_HARE_GAME_H
+#ifndef NYULLER_GAME_H
+#define NYULLER_GAME_H
 
-// game.h — Whack Hare! state machine.
+// game.h — Nyuller state machine.
 //
 // States (see game.c for the per-state behavior and the transition
 // diagram from GAME.md §9):

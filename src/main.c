@@ -1,4 +1,4 @@
-// main.c — Whack Hare! entry point (Phase 5: raster IRQ + idle loop).
+// main.c — Nyuller entry point (Phase 5: raster IRQ + idle loop).
 //
 // Flow:
 //   1. memmap_setup()      — bank out KERNAL/BASIC/CHAR ROM.

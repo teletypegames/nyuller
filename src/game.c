@@ -1,4 +1,4 @@
-// game.c — Whack Hare! state machine.
+// game.c — Nyuller state machine.
 //
 // See game.h for the transition diagram and game_init() / game_step()
 // documentation.  Each state has an "enter" action (set the screen,

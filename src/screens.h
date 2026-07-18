@@ -1,5 +1,5 @@
-#ifndef WHACK_HARE_SCREENS_H
-#define WHACK_HARE_SCREENS_H
+#ifndef NYULLER_SCREENS_H
+#define NYULLER_SCREENS_H
 
 // Screen IDs.  Pass to show_screen() to switch to a new screen.
 #define SCREEN_TITLE		0

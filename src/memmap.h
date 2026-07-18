@@ -1,5 +1,5 @@
-#ifndef WHACK_HARE_MEMMAP_H
-#define WHACK_HARE_MEMMAP_H
+#ifndef NYULLER_MEMMAP_H
+#define NYULLER_MEMMAP_H
 
 #include <c64/memmap.h>
 

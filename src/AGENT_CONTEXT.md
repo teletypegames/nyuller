@@ -1,6 +1,6 @@
-# Project context for Whack Hare! subagent
+# Project context for Nyuller subagent
 
-You are implementing one phase of a C64 game called "Whack Hare!"
+You are implementing one phase of a C64 game called "Nyuller."
 (quick-draw duel between a rabbit and a kid on a scooter, first to 5
 wins). You will be given a specific phase task. This document is the
 context you need to do the work.
