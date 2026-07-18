@@ -360,7 +360,222 @@ These items were done after Phase 8 was marked complete:
 
 ---
 
-## Phase 9 — (Optional) extra features
+## Phase 10 — Code review fixes (pending)
+
+Findings from the second round of 4-agent parallel code review.
+**Do not apply fixes yet — these are tasks to be worked through.**
+
+### Critical (game-breaking bugs)
+
+- [ ] **Screen RAM writes go to VIC registers, not DRAM** —
+  `src/screens.c:182` (`copy_bytes(s->attr, (char *)0xD000, 1000)`),
+  `src/screens.c:198-200` (`show_white_screen` clears `$D000-$D3E7`),
+  and `src/score.c:154-165` (`setup_score_bar_cells` writes
+  `SCORE_SCREEN_BASE[i] = 0` for i=0..39 to `$D000-$D027`).
+  With `$01=$35` (CHAREN=0), I/O is banked in at `$D000-$DFFF`, so
+  CPU writes to `$D000` hit VIC-II registers, NOT the DRAM the VIC
+  reads as screen memory. Effect on real hardware: (a) screens
+  display garbage (`.attr` data never reaches screen RAM), (b)
+  `$D01A` (`vic.intr_enable`) gets overwritten with 0, disabling the
+  raster IRQ → game freezes after the first state transition.
+  Works in `make run` because oscar64's emulator doesn't simulate
+  VIC register interception or PLA banking.
+  **Fix:** relocate screen RAM to a CPU-writable address under `$35`
+  (e.g. `$0400` or `$C000`), update `vic.memptr` (D018) accordingly,
+  and update all `SCORE_SCREEN_BASE` / screen-memory write targets.
+
+- [ ] **`vic_setup_mcm()` clears RST8 on every screen change** —
+  `src/screens.c:160` writes `vic.ctrl1 = 0x38` (BMM|DEN|RSEL),
+  bit 7 (RST8) = 0. `tick.c:123` only sets RST8 once at boot.
+  Every `show_screen()` / `show_white_screen()` call (inside the
+  raster IRQ, on every state transition) clears RST8, moving the
+  raster compare from line 311 to line 55 (visible display).
+  Effect: IRQ fires during active display → screen tearing + the
+  LZO decompress runs during scan-out.
+  **Fix:** preserve RST8 in `vic_setup_mcm()`:
+  `vic.ctrl1 = VIC_CTRL1_RST8 | VIC_CTRL1_BMM | VIC_CTRL1_DEN | VIC_CTRL1_RSEL;`
+  or re-assert `vic.ctrl1 |= VIC_CTRL1_RST8;` after every screen change.
+
+- [ ] **`$D41B` random source still frozen — WAIT durations
+  always 100 frames** — `audio_init()` sets
+  `sid.voices[2].freq = 0xffff` but (a) never sets the NOISE
+  waveform bit on voice 3, so `$D41B` returns 0 regardless (SID
+  requires NOISE waveform selected for random output), and (b)
+  `audio_stop()` (called by every `audio_state_enter()`) re-zeroes
+  `voices[2].freq`, undoing the fix on the very first state
+  transition. The KNOWN_ISSUES.md #5 "fix" is ineffective on real
+  hardware. `game_enter_ready()` samples `sid.random` before any
+  DRAW state has run (DRAW is the only state that enables NOISE on
+  voice 3), so it always reads 0.
+  **Fix:** in `audio_init()`, also set
+  `sid.voices[2].ctrl = SID_CTRL_NOISE;` (no GATE → silent, LFSR
+  runs). Best: exempt voice 3 from `audio_stop()` entirely (don't
+  zero `voices[2].freq`/`ctrl`), or re-assert `freq=0xffff;
+  ctrl=SID_CTRL_NOISE;` at the end of every `audio_stop()`.
+
+- [ ] **Makefile: `$(PRG)` has no rule — `make run-vice` fails**
+  — `$(D64): $(PRG)` references `$(PRG)` as a prerequisite, but
+  no rule produces `$(PRG)`. Only the phony `compile` target
+  creates it as a side effect. `run-vice` / `run-vice-cycle`
+  only depend on `$(D64)`, not `compile`. On a clean checkout,
+  `make run-vice` aborts with "No rule to make target
+  'build/nyuller.prg'". `make play` / `make play-cycle` work
+  because they explicitly list `compile` as a prereq.
+  **Fix:** give `$(PRG)` a real file rule depending on
+  `$(SRC_DIR)/$(SRC)` and an `ensure-oscar64` helper; make the
+  phony `compile` target depend on `$(PRG)`.
+
+- [ ] **Makefile: `.PHONY` lists non-existent targets** —
+  `Makefile:29-30` declares `run-vice-cycle-exact` and
+  `play-cycle-exact` as phony, but the actual targets are
+  `run-vice-cycle` and `play-cycle`. The real targets are not
+  declared phony.
+  **Fix:** change `.PHONY` to:
+  `help compile run run-vice run-vice-cycle play play-cycle kill clean ensure-build-dir`
+
+### Medium (spec deviations, edge cases, robustness)
+
+- [ ] **DRAW fault uses `> 500` instead of `>= 500`** —
+  `src/game.c:393`. All other state timeouts use `>=`
+  (READY `>= 60`, WIN `>= 100`, GAMEOVER `>= 300`). DRAW fault
+  fires at elapsed=501 (501 visible frames = 10.02 sec) instead
+  of elapsed=500 (500 frames = 10.00 sec). 1 frame longer than
+  spec and inconsistent with the rest of the codebase.
+  **Fix:** change `> 500` to `>= 500`, or document the choice.
+
+- [ ] **Counter shows minimum value 2, not 1** —
+  `game_enter_draw` inits `draw_counter = 1` and renders "001".
+  `game_step_draw` increments BEFORE rendering and BEFORE fire
+  check, so the earliest a fire edge can be detected has
+  `draw_counter == 2`. A perfect 1-frame draw reports "2", not
+  "1". Spec (GAME.md §3) implies a perfect draw should show 001.
+  **Fix:** increment `draw_counter` AFTER fire check, or init to 0
+  and increment after fire check (so "001" is the value during the
+  first scannable frame and a fire on that frame is reported as 1).
+
+- [ ] **WAIT duration upper bound is 249, not 250** —
+  `src/game.c:196`: `100 + (sid.random % 150)` produces [100, 249].
+  Spec says 100..250 frames (2.0–5.0 sec).
+  **Fix:** use `100 + (sid.random % 151)` for [100, 250], or
+  document the exclusive upper bound.
+
+- [ ] **DRAW border strobe is 5 frames, not 4** —
+  `src/game.c:377-380`: `if (elapsed < 5)` strobes for elapsed
+  0..4 = 5 visible frames (W/B/W/B/W). Comment says "first 4
+  frames"; spec says "4-frame stab".
+  **Fix:** change `< 5` to `< 4`, or update comment/spec to "5".
+
+- [ ] **GAMEOVER resets scores immediately, spec says show final
+  score** — `game_enter_gameover` (game.c:273-274) resets
+  `score_p1 = score_p2 = 0` on entry. GAME.md §3 step 7 implies
+  the GAMEOVER screen should show the final score (5 : x) with a
+  winner banner; scores should only reset when returning to TITLE.
+  **Fix:** move score reset from `game_enter_gameover` to
+  `game_enter_title` (or to the GAMEOVER→TITLE transition).
+
+- [ ] **ADSR decay comments inconsistent with constants** —
+  `src/audio.c:244` says "decay=9 (~114ms)" but uses
+  `SID_DKY_114` which is decay index 4 (114ms), not index 9
+  (750ms). `src/audio.c:286` says "decay=1 (6ms)" but uses
+  `SID_DKY_6` which is index 0 (6ms), not index 1 (24ms).
+  **Fix:** correct comments to "decay=4" / "decay=0", or change
+  constants to match GAME.md §6 if the spec's "9"/"1" refer to
+  register values.
+
+- [ ] **`clear_color_ram()` is 4x redundant** —
+  `src/screens.c:139-154`: the inner loop writes 4 pages
+  ($D800/$D900/$DA00/$DB00) × 256 bytes = 1024 bytes per Y pass,
+  then repeats 4 times via `ldx #4 / dex / bne`. Total 4096
+  stores instead of 1024 (~16ms instead of ~4ms). Functionally
+  correct (idempotent) but slower than documented.
+  **Fix:** drop the outer `ldx #4` loop, or change to `ldx #1`.
+
+- [ ] **`memmap_setup()` redundant `MMAP_RAM` call** —
+  `src/memmap.c:6` sets `$01=$30`, then line 7 immediately
+  overwrites with `$01=$35`. The `$30` window does no useful
+  work. Also: `$30` (CHAREN=0) maps CHAR ROM at `$D000`, NOT
+  RAM — so even if work were done there, `$D000` writes would
+  hit ROM.
+  **Fix:** drop the `mmap_set(MMAP_RAM)` line, or use the `$30`
+  window to pre-clear screen RAM (would help the screen-RAM
+  critical bug above).
+
+- [ ] **Makefile: no VICE binary check** — `make run-vice`,
+  `make play`, etc. don't check if `x64`/`x64sc` is in PATH.
+  Old `build.sh` had `command -v "$PLAY_VICE"`.
+  **Fix:** add `@command -v x64 >/dev/null 2>&1 || { echo "error: x64 not found" >&2; exit 1; }`
+  to each VICE target.
+
+- [ ] **Makefile: no `$DISPLAY` check** — old `build.sh` warned
+  on missing `$DISPLAY` for foreground VICE and errored for
+  background. Makefile omits both. On headless, `make play`
+  silently launches x64 with no window.
+  **Fix:** add `@[ -n "$$DISPLAY" ] || { echo "error: no \$DISPLAY" >&2; exit 1; }`
+  to VICE GUI targets.
+
+- [ ] **Makefile: `setsid` PID capture is fragile** —
+  `$$!` captures the `setsid` wrapper PID, not the `x64` child.
+  `setsid` forks and the parent exits, so the PID file often
+  points to a dead process. `make kill` uses `pgrep` (correct),
+  but the `kill -0` "did it start?" check in `play`/`play-cycle`
+  may falsely report failure.
+  **Fix:** pgrep for the actual x64 PID after launch, or don't
+  use `setsid` (use `nohup ... & disown`).
+
+- [ ] **Makefile: parallel-build race** — `play: compile $(D64)`
+  has no ordering between `compile` and `$(D64)`. Under
+  `make -j`, `$(D64)` may start before `compile` writes
+  `$(PRG)`. Root cause same as `$(PRG)` having no rule.
+  **Fix:** same as critical #4 — make `$(PRG)` a real file target.
+
+- [ ] **Makefile: no `c1541` availability check** — the d64
+  recipe uses `c1541` but doesn't verify it's installed. Old
+  `build.sh` had `command -v c1541`.
+  **Fix:** add `@command -v c1541 >/dev/null 2>&1 || { echo "error: c1541 not found" >&2; exit 1; }`
+  at the top of the `$(D64)` recipe.
+
+- [ ] **Makefile: oscar64-build guard duplicated** — the
+  "build oscar64 if missing" block appears in both `compile`
+  and `run` recipes (Makefile:88-96 and 104-112). DRY
+  violation.
+  **Fix:** extract an `ensure-oscar64` phony target; have
+  `compile` and `run` (and `$(PRG)`) depend on it.
+
+- [ ] **WAIT transition stinger uses voice 2 (the RNG source)** —
+  `src/game.c:123` picks voice 2 for the WAIT stinger. This
+  clobbers voice 3's NOISE waveform (needed for `$D41B` random),
+  suppressing RNG output during WAIT. Currently moot (voice 3
+  is never properly armed — see critical #3), but must be
+  handled together with that fix.
+  **Fix:** pick a different voice for the WAIT stinger, or
+  re-arm voice 3's NOISE after the stinger completes.
+
+### Low (cosmetic, doc, defensive)
+
+- [ ] **Doc-only "WHACKED" references** — `GAME.md:33` and
+  `src/AGENT_CONTEXT.md:142` describe the title screen as
+  showing a "WHACKED" logo. The image asset still says this
+  (visual, not code). Update docs or update the PNG.
+- [ ] **`font` array uses `char` instead of `unsigned char`** —
+  `src/score.c:36`, `src/banner.c:29`. Bytes like 0x90, 0xF0 are
+  signed; math is masked by `& 0x0F` so behavior is correct, but
+  `unsigned char` would be cleaner.
+- [ ] **`memmap_restore()` is dead code** — never called; main
+  loop is infinite. Document as intentional or wire up an exit
+  path (e.g. NMI handler).
+- [ ] **PROG_C64.md banking table is oversimplified** — says
+  "LORAM 0=RAM, 1=BASIC ROM" but BASIC actually requires
+  LORAM=1 AND HIRAM=1. The `$BC00` fix relies on HIRAM=0.
+- [ ] **Makefile: `clean` first line lacks `@` prefix** —
+  echoes the long `rm -f ...` command. Minor inconsistency.
+- [ ] **Makefile: undocumented intermediate files** —
+  `clean` removes `nyuller.int`, `nyuller.dbj`, `nyuller.csz`
+  but `help` doesn't list them as output files.
+- [ ] **Makefile: `make OPT=` (empty) produces `-` flag** —
+  edge case. Guard with `OPT_FLAGS := $(if $(OPT),-$(OPT))`.
+- [ ] **Audio schedule off-by-one** (already documented in
+  KNOWN_ISSUES.md #3) — WIN/GAMEOVER notes are 1 frame short per
+  note (~10% deviation). Cosmetic.
 
 Pick from these based on time and interest. None of these are
 required for the game to be done.
