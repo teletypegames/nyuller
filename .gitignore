@@ -35,4 +35,5 @@ __pycache__/
 
 # misc
 *.log
+*.pid
 core
