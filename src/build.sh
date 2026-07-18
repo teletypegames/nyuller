@@ -23,6 +23,12 @@
 #   nyuller.lbl        — VICE monitor label commands
 #   nyuller.d64        — disk image wrapping nyuller.prg (for VICE autostart)
 #
+# VICE note: -drive8type 1541 is required for autostart to work.  VICE
+# defaults to the 1541-II (drive type 1542), whose ROM we don't have
+# installed; without this flag the autostart `LOAD"*",8,1` fails with
+# ?DEVICE NOT PRESENT.  We have the original 1541 ROM at
+# ~/.local/share/vice/DRIVES/dos1541-325302-01+901229-05.bin.
+#
 # For the development loop, use -e (oscar64's built-in emulator). It runs
 # without a display, needs no ROMs, and is faster than VICE. Use -p when
 # you want to play the game interactively — it launches VICE in the
@@ -161,7 +167,7 @@ case "$EMU_CMD" in
 			echo "warning: no \$DISPLAY set; VICE won't show a window" >&2
 		fi
 		echo "running nyuller in VICE ($EMU_CMD, blocking)"
-		"$EMU_CMD" +confirmonexit -autostart "$D64"
+		"$EMU_CMD" +confirmonexit -drive8type 1541 -autostart "$D64"
 		;;
 esac
 
@@ -189,7 +195,7 @@ if [ -n "$PLAY_VICE" ]; then
 	build_d64
 	echo "launching VICE $PLAY_VICE in the background with $D64..."
 	log="$BUILD_DIR/vice.log"
-	( setsid nohup "$PLAY_VICE" +confirmonexit -autostart "$D64" \
+	( setsid nohup "$PLAY_VICE" +confirmonexit -drive8type 1541 -autostart "$D64" \
 		> "$log" 2>&1 < /dev/null & echo $! > "$BUILD_DIR/vice.pid" )
 	# setsid + nohup detach VICE from this shell so it survives our exit.
 	pid=$(cat "$BUILD_DIR/vice.pid")
