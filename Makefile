@@ -9,6 +9,9 @@ ROOT       := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 OSCAR64_DIR := $(ROOT)/oscar64
 OSCAR64_BIN := $(OSCAR64_DIR)/bin/oscar64
 BUILD_DIR  := $(ROOT)/build
+MUFFLON_DIR := $(ROOT)/mufflon
+MUFFLON_BIN := $(BUILD_DIR)/mufflon
+TOOLS_DIR  := $(ROOT)/tools
 
 SRC        := main.c
 PRG        := $(BUILD_DIR)/nyuller.prg
@@ -16,6 +19,10 @@ D64        := $(BUILD_DIR)/nyuller.d64
 LOG        := $(BUILD_DIR)/vice.log
 PID_FILE   := $(BUILD_DIR)/vice.pid
 SRC_DIR    := $(ROOT)/src
+
+# --- NUFLI source images -----------------------------------
+NUFLI_SRC_DIR := $(ROOT)/source_images
+NUFLI_OUT_DIR := $(SRC_DIR)/data/nufli
 
 # --- oscar64 flags ----------------------------------------
 # Override with:  make OPT=O3    (or O0/O1/O2/Os/g)
@@ -31,7 +38,8 @@ HDR_FILES    := $(wildcard $(SRC_DIR)/*.h)
 
 # --- phony targets ----------------------------------------
 .PHONY: help compile run run-vice run-vice-cycle \
-        play play-cycle kill clean ensure-build-dir ensure-oscar64
+        play play-cycle kill clean ensure-build-dir ensure-oscar64 \
+        ensure-mufflon nufli nufli-clean
 
 # ============================================================
 # help (default)
@@ -60,6 +68,10 @@ help:
 	@echo ""
 	@echo "  Clean"
 	@echo "    make clean              remove build/ artifacts and VICE log/pid files"
+	@echo ""
+	@echo "  NUFLI images"
+	@echo "    make nufli              convert source PNGs → NUFLI assembly data"
+	@echo "    make nufli-clean        remove NUFLI generated files"
 	@echo ""
 	@echo "  Output (in build/)"
 	@echo "    nyuller.prg             loadable C64 program"
@@ -102,9 +114,73 @@ ensure-oscar64:
 	fi
 
 # ============================================================
+# ensure-mufflon — download source + build if missing
+# ============================================================
+ensure-mufflon: ensure-build-dir
+	@if [ ! -f "$(MUFFLON_DIR)/mufflon.c" ]; then \
+		echo "mufflon source not found; downloading from CSDb..."; \
+		mkdir -p "$(MUFFLON_DIR)"; \
+		curl -sL "https://csdb.dk/getinternalfile.php/180585/Mufflon1.0-source+GUI+Bonus.zip" -o "$(BUILD_DIR)/mufflon.zip"; \
+		cd "$(BUILD_DIR)" && unzip -qo mufflon.zip "Mufflon1.0-source+Bonus/mufflon-source+GUI/mufflon.c" "Mufflon1.0-source+Bonus/mufflon-source+GUI/mufflon.h"; \
+		cp "$(BUILD_DIR)/Mufflon1.0-source+Bonus/mufflon-source+GUI/mufflon.c" "$(MUFFLON_DIR)/"; \
+		cp "$(BUILD_DIR)/Mufflon1.0-source+Bonus/mufflon-source+GUI/mufflon.h" "$(MUFFLON_DIR)/"; \
+		rm -rf "$(BUILD_DIR)/Mufflon1.0-source+Bonus" "$(BUILD_DIR)/mufflon.zip"; \
+	fi
+	@if [ ! -f "$(MUFFLON_DIR)/mufflon.c" ]; then \
+		echo "error: mufflon source download failed" >&2; \
+		exit 1; \
+	fi
+	@if [ ! -x "$(MUFFLON_BIN)" ]; then \
+		echo "building mufflon -> $(MUFFLON_BIN)"; \
+		cd "$(MUFFLON_DIR)" && gcc -o "$(MUFFLON_BIN)" -lm -O5 -ffast-math mufflon.c; \
+	fi
+	@if [ ! -x "$(MUFFLON_BIN)" ]; then \
+		echo "error: $(MUFFLON_BIN) is still missing after build" >&2; \
+		exit 1; \
+	fi
+
+# ============================================================
+# NUFLI image pipeline
+# ============================================================
+
+# Source screen images (PNG)
+NUFLI_SCREENS := screen_title screen_waiting1 screen_waiting_2 screen_win_hare screen_win_scoot
+
+# Generated files
+NUFLI_NUF_FILES := $(addprefix $(NUFLI_OUT_DIR)/,$(addsuffix .nuf,$(NUFLI_SCREENS)))
+NUFLI_ASM_FILES := $(addprefix $(NUFLI_OUT_DIR)/,$(addsuffix .asm,$(NUFLI_SCREENS)))
+NUFLI_HDR_FILES := $(addprefix $(NUFLI_OUT_DIR)/,$(addsuffix .h,$(NUFLI_SCREENS)))
+
+# Build all NUFLI images
+nufli: $(NUFLI_ASM_FILES) $(NUFLI_HDR_FILES)
+	@echo "NUFLI images built in $(NUFLI_OUT_DIR)/"
+
+# Clean NUFLI artifacts
+nufli-clean:
+	@rm -f $(NUFLI_OUT_DIR)/*.nuf $(NUFLI_OUT_DIR)/*.asm $(NUFLI_OUT_DIR)/*.h
+	@rm -f $(NUFLI_OUT_DIR)/*.bmp
+	@echo "cleaned NUFLI images"
+
+# PNG → BMP (Mufflon needs BMP input)
+$(NUFLI_OUT_DIR)/%.bmp: $(NUFLI_SRC_DIR)/%.png | ensure-build-dir
+	@mkdir -p $(NUFLI_OUT_DIR)
+	@echo "converting $< -> $@"
+	@python3 -c "from PIL import Image; Image.open('$<').resize((320,200), Image.LANCZOS).save('$@')"
+
+# BMP → NUFLI (.nuf)
+$(NUFLI_OUT_DIR)/%.nuf: $(NUFLI_OUT_DIR)/%.bmp | ensure-mufflon
+	@echo "converting $< -> $@"
+	@$(MUFFLON_BIN) $< -o $@ --shutup
+
+# NUFLI → Assembly (.asm + .h)
+$(NUFLI_OUT_DIR)/%.asm $(NUFLI_OUT_DIR)/%.h: $(NUFLI_OUT_DIR)/%.nuf
+	@echo "converting $< -> $@ + $(basename $@).h"
+	@python3 $(TOOLS_DIR)/nuf_to_asm.py $< $(NUFLI_OUT_DIR)/$*
+
+# ============================================================
 # $(PRG) — compile main.c → nyuller.prg
 # ============================================================
-$(PRG): $(SRC_FILES) $(HDR_FILES) | ensure-build-dir ensure-oscar64
+$(PRG): $(SRC_FILES) $(HDR_FILES) $(NUFLI_ASM_FILES) | ensure-build-dir ensure-oscar64
 	@echo "compiling $(SRC) with $(OSCAR64_BIN) -> $(BUILD_DIR)/"
 	cd "$(SRC_DIR)" && "$(OSCAR64_BIN)" -i="$(OSCAR64_DIR)/include" -o="$(PRG)" $(OPT_FLAGS) "$(SRC)"
 

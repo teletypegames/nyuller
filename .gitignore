@@ -25,6 +25,22 @@ oscar64/build/
 __pycache__/
 *.pyc
 
+# python venvs
+tools/img-convert/venv/
+
+# mufflon source (not a submodule, from SVN repo)
+mufflon/
+
+# mufflon build output
+build/mufflon
+
+# NUFLI generated files (BMP intermediates, .nuf output, result/error maps)
+src/data/nufli/*.bmp
+src/data/nufli/*.nuf
+
+# temp / comparison output
+tmp/
+
 # editor / IDE
 .vscode/
 .idea/

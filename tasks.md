@@ -360,6 +360,73 @@ These items were done after Phase 8 was marked complete:
 
 ---
 
+## NUFLI Integration Plan
+
+**Goal:** Replace the current multicolor bitmap screens with NUFLI format
+for static screens (title, win, gameover). NUFLI provides 320×200 resolution
+with ~10+ colors per block vs the current 160×200 with 4 colors per cell.
+
+### Architecture
+
+**Hybrid approach:**
+- **Static screens** (title, win_hare, win_scoot, gameover): NUFLI format
+- **Animated screens** (waiting1, waiting2, draw): Keep current multicolor bitmap
+
+**Why hybrid:**
+- NUFLI consumes 100% CPU during display (no game logic possible)
+- NUFLI uses all 8 sprites (no sprites for game objects)
+- Static screens don't need game logic, so NUFLI is perfect
+
+### Implementation Steps
+
+#### Step 1: NUFLI display routine integration
+- [ ] Create `src/nufli.h` with display function declarations
+- [ ] Create `src/nufli.c` with display routine wrapper:
+  - `nufli_show(const unsigned char *data)` — loads data to $2000, calls SYS 12288
+  - `nufli_exit()` — restores normal video mode
+- [ ] Add `nufli_display.asm` to `src/` (6502 assembly for bank switching + JSR $3000)
+
+#### Step 2: Screen state machine updates
+- [ ] Modify `game_enter_title()` to use NUFLI for title screen
+- [ ] Modify `game_enter_win_p1/p2()` to use NUFLI for win screens
+- [ ] Modify `game_enter_gameover()` to use NUFLI for gameover screen
+- [ ] Keep existing multicolor for waiting/draw screens
+
+#### Step 3: Memory management
+- [ ] Ensure NUFLI data ($2000-$7FFF) doesn't conflict with game code
+- [ ] Verify screen RAM at $C400 doesn't overlap with NUFLI bitmap
+- [ ] Test sprite pointer setup (NUFLI uses bank 3 sprites)
+
+#### Step 4: State transitions
+- [ ] Implement `nufli_exit()` to restore VIC-II state before returning to game
+- [ ] Ensure raster IRQ is re-enabled after NUFLI display
+- [ ] Test TITLE→READY transition (NUFLI→multicolor)
+
+#### Step 5: Build pipeline integration
+- [x] ✅ `make nufli` generates .asm files from source PNGs
+- [x] ✅ NUFLI .asm files are build dependencies
+- [ ] Add `#pragma embed` or linker includes for NUFLI data
+- [ ] Verify total binary size fits in C64 memory
+
+### Memory Map (NUFLI mode)
+```
+$2000-$7FFF: NUFLI data (bitmap + sprites + color tables)
+$8000-$9FFF: Game code (oscar64 default)
+$C000-$C3FF: Screen RAM (for multicolor screens)
+$C400-$C7FF: Screen RAM (for NUFLI underlays)
+$E000-$FFFF: Bitmap RAM (for multicolor screens)
+```
+
+### Verify
+- `make nufli` generates all 5 screen .asm files
+- `make compile` builds successfully with NUFLI data included
+- `make run`: title screen displays in NUFLI quality (320×200, many colors)
+- Press fire → transitions to multicolor waiting screen
+- Win → displays NUFLI win screen
+- Gameover → displays NUFLI gameover screen
+
+---
+
 ## Phase 10 — Code review fixes (pending)
 
 Findings from the second round of 4-agent parallel code review.
