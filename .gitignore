@@ -1,5 +1,5 @@
 # build artifacts
-src/build/
+build/
 *.prg
 *.asm
 *.map

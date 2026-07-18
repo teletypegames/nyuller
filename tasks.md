@@ -65,15 +65,15 @@ runs.
 
 - [x] ✅ Repo initialized, oscar64 is a submodule at `./oscar64/`.
 - [x] ✅ `src/helloworld.c` + `src/build.sh` produce
-  `src/build/helloworld.prg`.
+  `build/helloworld.prg`.
 - [x] ✅ `GAME.md` written.
 - [x] ✅ Source artwork in `./source_images/`.
 - [ ] ⏳ **Verify:** `cd src && ./build.sh -e` runs the hello-world
   program in the oscar64 built-in emulator. (Optional: launch
-  `x64 src/build/helloworld.prg` in a real terminal session
+  `x64 build/helloworld.prg` in a real terminal session
   to see the screen.)
 
-**Done means:** `src/build/helloworld.prg` exists and the
+**Done means:** `build/helloworld.prg` exists and the
 emulator prints "Hello World" then exits cleanly.
 
 ---
@@ -171,7 +171,7 @@ state.
 - `cd src && ./build.sh -e` displays the title screen in the
   oscar64 built-in emulator for 5 seconds (or until fire is pressed)
   then exits.
-- (Optional, interactive) `x64 src/build/whack_hare.prg` in a real
+- (Optional, interactive) `x64 build/whack_hare.prg` in a real
   terminal session displays the title screen on real timings.
   Compare visually to `source_images/screen_title.png`.
 - The .map file shows our code is in $0900-$1100-ish, well within
@@ -304,7 +304,7 @@ random source.
 **Verify:**
 - The game still works in the oscar64 built-in emulator
   (`build.sh -e`).
-- (Optional, interactive) Launch `x64sc src/build/whack_hare.prg`
+- (Optional, interactive) Launch `x64sc build/whack_hare.prg`
   in a real terminal to confirm the game runs at cycle-exact PAL
   timing (50.125 Hz). The state transitions happen on the right
   raster lines. The 50 Hz tick is rock-solid.
@@ -363,7 +363,7 @@ becomes audible.
   - GAMEOVER: longer fanfare.
 - The cues are recognizable and feel right (timing, volume).
 - (Optional, interactive) Run the audio cues under `x64sc
-  src/build/whack_hare.prg` in a real terminal to confirm the
+  build/whack_hare.prg` in a real terminal to confirm the
   SID envelope generator timings are right; the oscar64 emulator
   is fast but not always bit-accurate on SID timing, and the
   `x64sc` cycle-exact path is the one that matches real hardware.

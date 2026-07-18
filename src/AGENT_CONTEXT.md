@@ -155,7 +155,7 @@ $21-$24) goes to $D800-$DBE7.
 ## Commit conventions
 
 - One commit per phase, with a clear `Phase N: <summary>` prefix.
-- Don't commit generated build artifacts in `src/build/` (gitignored).
+- Don't commit generated build artifacts in `build/` (gitignored).
 - Generated data files (e.g. `src/data/processed/*.bin`) are checked
   in so the build doesn't depend on Python being installed.
 

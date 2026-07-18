@@ -16,7 +16,7 @@
 #   ./build.sh -Os        # compile with -Os (optimize for size)
 #   ./build.sh -g         # compile with -g (adds source-level debug info)
 #
-# Output (in ./build/):
+# Output (in <repo>/build/):
 #   whack_hare.prg   — loadable C64 program (run with x64, VICE, or real hw)
 #   whack_hare.asm   — full 6502 listing
 #   whack_hare.map   — region/section/object placement
@@ -47,7 +47,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OSCAR64_DIR="$ROOT/oscar64"
 OSCAR64_BIN="$OSCAR64_DIR/bin/oscar64"
-BUILD_DIR="$SCRIPT_DIR/build"
+BUILD_DIR="$ROOT/build"
 PRG="$BUILD_DIR/whack_hare.prg"
 D64="$BUILD_DIR/whack.d64"
 

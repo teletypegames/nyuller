@@ -9,6 +9,7 @@ as the cross-compiler. Oscar64 is checked in as a git submodule under
 ```
 .
 ├── oscar64/        # Oscar64 cross-compiler (git submodule)
+├── build/          # Build output (gitignored)
 ├── docs/c64/       # Low-level C64 reference (memory map, VIC, CIA, SID, …)
 ├── src/            # Your C code
 │   ├── helloworld.c
@@ -31,11 +32,14 @@ git submodule update --init --recursive
 
 ```sh
 cd src
-./build.sh            # compile helloworld.c → src/build/helloworld.prg
+./build.sh            # compile main.c → build/whack_hare.prg (-O1)
 ./build.sh -e         # run in oscar64's built-in emulator (headless, fast)
-./build.sh -v         # run in VICE x64 (interactive, needs a real display)
-./build.sh -V         # run in VICE x64sc (interactive, cycle-exact)
+./build.sh -p         # PLAY: launch VICE in background (see build.sh --help)
+./build.sh -v         # run in VICE x64 (foreground, blocks terminal)
+./build.sh -V         # run in VICE x64sc (cycle-exact, foreground)
+./build.sh --kill     # kill any detached VICE process
 ./build.sh -c         # just compile
+./build.sh -O3        # release build (auto-ZP, outliner, aggressive inlining)
 ```
 
 `build.sh` will build the oscar64 compiler automatically the first time
