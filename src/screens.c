@@ -140,7 +140,6 @@ static void clear_color_ram(void)
 {
     __asm {
         lda #0
-        ldx #4
         ldy #0
     L0: sta $d800, y
         sta $d900, y
@@ -148,21 +147,19 @@ static void clear_color_ram(void)
         sta $db00, y
         iny
         bne L0
-        dex
-        bne L0
     }
 }
 
 // Configure the VIC for multicolor bitmap mode pointing at the data
-// at $D000 (screen memory) and $E000 (bitmap).  Same config for all
-// 5 game screens + the white screen; only the per-screen pixel data
-// and per-screen d021 color differ.
+// at $C400 (screen memory, VIC offset $0400) and $E000 (bitmap).  Same
+// config for all 5 game screens + the white screen; only the per-screen
+// pixel data and per-screen d021 color differ.
 static void vic_setup_mcm(void)
 {
-    vic.ctrl1 = VIC_CTRL1_BMM | VIC_CTRL1_DEN | VIC_CTRL1_RSEL;
+    vic.ctrl1 = VIC_CTRL1_RST8 | VIC_CTRL1_BMM | VIC_CTRL1_DEN | VIC_CTRL1_RSEL;
     vic.ctrl2 = VIC_CTRL2_MCM | VIC_CTRL2_CSEL;
     cia2.pra  = (cia2.pra & 0xfc) | 0x00;
-    vic.memptr = 0x48;
+    vic.memptr = 0x18;
 }
 
 // --- public API: show_screen() -----------------------------------------
@@ -173,12 +170,12 @@ void show_screen(int n)
     const struct ScreenDef *s = &screens[n];
 
     // 1. Decompress the 8 KB bitmap into $E000-$FFFF and copy the 1 KB
-    //    screen memory into $D000-$D3E7.  Both happen while the VIC
+    //    screen memory into $C400-$C7E7.  Both happen while the VIC
     //    is still in its old mode (or, on the very first call, in
     //    whatever state memmap_setup() left it).  We do the attr
     //    copy first so the visible region stays coherent for as long
     //    as possible during the bitmap decompression.
-    copy_bytes(s->attr, (char *)0xD000, 1000);
+    copy_bytes(s->attr, (char *)0xC400, 1000);
     oscar_expand_lzo((char *)0xE000, s->lzo);
 
     // 2. Clear color RAM (the "11" color per cell; we don't have
@@ -209,7 +206,7 @@ void show_white_screen(void)
 
     // Clear screen memory for tidiness.  The top 40 cells are
     // overwritten by score_render() right after this returns.
-    char *sm = (char *)0xD000;
+    char *sm = (char *)0xC400;
     for (unsigned i = 0; i < 1000; i++)
         sm[i] = 0;
 

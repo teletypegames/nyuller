@@ -33,7 +33,7 @@ byte score_p2 = 0;
 // Index (also see CHAR_* macros in score.h):
 //   0=H, 1=A, 2=R, 3=E, 4=S, 5=C, 6=O, 7=T  (score bar labels)
 //   8=P, 9=F, 10=W, 11=I, 12=N, 13=!, 14=' ', 15=reserved
-static const char font[FONT_COUNT][8] = {
+static const unsigned char font[FONT_COUNT][8] = {
 	// 0 H  (1 0 0 1) × 3, (1 1 1 1), (1 0 0 1) × 4
 	{ 0x90, 0x90, 0x90, 0xF0, 0x90, 0x90, 0x90, 0x90 },
 	// 1 A  (0 1 1 0), (1 0 0 1) × 2, (1 1 1 1), (1 0 0 1) × 4
@@ -131,7 +131,7 @@ static const char pip_empty[16] = {
 #define CELLS_PER_ROW		40
 #define BYTES_PER_CELL		8
 #define SCORE_BITMAP_BASE	((char *)0xE000)
-#define SCORE_SCREEN_BASE	((char *)0xD000)
+#define SCORE_SCREEN_BASE	((char *)0xC400)
 #define SCORE_CRAM_BASE		((char *)0xD800)
 
 // Cell indices for the labels and pip groups (see score.h for diagram).

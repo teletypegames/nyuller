@@ -125,8 +125,8 @@ is also the CPU's bank-switch latch. The bit meanings:
 
 | Bit | Name | Effect |
 |-----|------|--------|
-| 0 | LORAM | 0=RAM at $A000-$BFFF, 1=BASIC ROM |
-| 1 | HIRAM | 0=RAM at $E000-$FFFF, 1=KERNAL ROM |
+| 0 | LORAM | Controls $A000-$BFFF (with HIRAM): 1+BASIC ROM visible |
+| 1 | HIRAM | 0=RAM at $E000-$FFFF, 1=KERNAL ROM. Also gates BASIC ROM. |
 | 2 | CHAREN | 0=CHAR ROM at $D000-$DFFF, 1=I/O (default) |
 | 3 | Cassette Data Out |
 | 4 | Cassette Switch Sense |
@@ -156,7 +156,7 @@ prefetch), but you almost never need to.
 | $0300-$03FF | More KERNAL/BASIC pointers; **$0314-$0315 = IRQ vector, $0316-$0317 = BRK vector, $0318-$0319 = NMI vector** |
 | $0400-$07FF | Screen RAM (1000 bytes for the 40×25 text screen) |
 | $0800-$9FFF | Free BASIC program storage (38911 bytes) |
-| $A000-$BFFF | BASIC ROM (8 KB, visible iff LORAM=1) |
+| $A000-$BFFF | BASIC ROM (8 KB, visible iff LORAM=1 AND HIRAM=1) |
 | $C000-$CFFF | Free for ML programs |
 | $D000-$D3FF | VIC-II registers (47 of them, mirrored every 64 bytes) |
 | $D400-$D7FF | SID registers (mirrored every 32 bytes; not on C128) |

@@ -21,7 +21,7 @@
 // the VIC to display them.
 //
 // Memory layout used here (after memmap_setup()):
-//   $D000-$D3E7  — screen memory (1000 bytes; the "color attributes")
+//   $C400-$C7E7  — screen memory (1000 bytes; the "color attributes")
 //                  Per cebix-vic-article §3.7.3.4, in multicolor bitmap
 //                  mode the screen memory byte holds the "01" color in
 //                  its high nibble and the "10" color in its low
@@ -40,7 +40,7 @@
 //   ctrl1 = BMM | DEN | RSEL  (multicolor bitmap, display on, 25 rows,
 //                              no vertical scroll)
 //   ctrl2 = MCM | CSEL        (multicolor, 40 columns, no horiz scroll)
-//   memptr (D018) = 0x48      (screen at $D000, bitmap at $E000 within
+//   memptr (D018) = 0x18      (screen at $0400, bitmap at $E000 within
 //                              the selected 16K VIC bank)
 //
 // Calling show_screen() with an unsupported ID is a no-op.
@@ -54,7 +54,7 @@ void show_screen(int n);
 // Implementation:
 //   1. Fill the 8 KB bitmap at $E000-$FFFF with 0x00 so every pixel is
 //      a "00" code (which uses $D021).
-//   2. Clear the 1 KB screen memory at $D000-$D3E7 (so any leftover
+//   2. Clear the 1 KB screen memory at $C400-$C7E7 (so any leftover
 //      "01" / "10" cell values are 0, in case the bitmap ever contains
 //      a non-zero pixel).
 //   3. Clear the 1 KB color RAM at $D800-$DBE7.

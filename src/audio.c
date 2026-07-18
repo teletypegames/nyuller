@@ -20,12 +20,12 @@
 //                   sounds on frames 8-15, 24-31, ...).
 //   STATE_DRAW      voice 2 noise, attack=0, decay=1, sustain=0,
 //                   release=2; gated on for 4 frames.
-//   STATE_WIN_*     voice 0 triangle C5-E5-G5-C6 arpeggio, 10 frames
-//                   per note (~0.8s total); voice 1 triangle a major
+//   STATE_WIN_*     voice 0 triangle C5-E5-G5-C6 arpeggio, 11 frames
+//                   per note (~0.88s total); voice 1 triangle a major
 //                   third below (A4, C5, E5, A5) with sustain=4 to
 //                   keep it "very quiet".
-//   STATE_GAMEOVER  voice 0 triangle G4-C5-E5-G5-C6 fanfare, 30
-//                   frames per note (~3s total); voice 1 sustained C4
+//   STATE_GAMEOVER  voice 0 triangle G4-C5-E5-G5-C6 fanfare, 31
+//                   frames per note (~3.1s total); voice 1 sustained C4
 //                   (a perfect fifth below G4) throughout.
 //
 // **No leakage between states.**  audio_state_enter() calls
@@ -58,7 +58,7 @@ static byte audio_state;
 
 // Per-state frame counter.  Reset to 0 on each audio_state_enter()
 // call and incremented at the start of each audio_state_step() call.
-// 16 bits is enough for the longest cue (GAMEOVER is 150 frames).
+// 16 bits is enough for the longest cue (GAMEOVER is 155 frames).
 static unsigned short audio_step;
 
 // Fault stinger counter.  > 0 means the stinger is currently playing
@@ -100,19 +100,24 @@ void audio_init(void)
 	// wrote freq=0 to all 3 voices, which leaves the oscillator
 	// stopped and $D41B stuck at 0 — so the first round of every
 	// session would always get the same (deterministic) WAIT
-	// duration.  Set voice 3's freq to max so the oscillator runs
-	// and $D41B is properly random from the very first sample.
+	// duration.  Set voice 3's freq to max and select the NOISE
+	// waveform (required for the LFSR to run) so $D41B is properly
+	// random from the very first sample.  No GATE bit → silent.
 	sid.voices[2].freq = 0xffff;
+	sid.voices[2].ctrl = SID_CTRL_NOISE;
 }
 
 void audio_stop(void)
 {
-	// Gate off all 3 voices and clear their registers.  Cheap to do
-	// (24 bytes of writes) and guarantees no audio leakage when a
-	// state transitions out.
+	// Gate off voices 0-1 and clear their registers.  Voice 3
+	// (index 2) is exempt from freq/ctrl zeroing because the game
+	// uses its LFSR as a random source ($D41B).  Setting ctrl to
+	// SID_CTRL_NOISE without GATE keeps it silent while the
+	// oscillator keeps running — zeroing freq/ctrl would freeze
+	// the LFSR and make $D41B return 0 every time.
 	sid.voices[0].ctrl = 0;
 	sid.voices[1].ctrl = 0;
-	sid.voices[2].ctrl = 0;
+	sid.voices[2].ctrl = SID_CTRL_NOISE;
 	sid.voices[0].attdec = 0;
 	sid.voices[1].attdec = 0;
 	sid.voices[2].attdec = 0;
@@ -121,7 +126,7 @@ void audio_stop(void)
 	sid.voices[2].susrel = 0;
 	sid.voices[0].freq = 0;
 	sid.voices[1].freq = 0;
-	sid.voices[2].freq = 0;
+	sid.voices[2].freq = 0xffff;
 	sid.voices[0].pwm = 0;
 	sid.voices[1].pwm = 0;
 	sid.voices[2].pwm = 0;
@@ -241,7 +246,7 @@ void audio_state_enter(int state)
 
 		case STATE_READY:
 			// Ping-ping: triangle A4 then A5, 8 frames each.
-			// ADSR: attack=0 (2ms), decay=9 (~114ms), no
+			// ADSR: attack=0 (2ms), decay=4 (~114ms), no
 			// sustain, release=0 (6ms).  With sustain=0 the
 			// envelope drops to 0 once decay finishes, but
 			// audio_state_step() retriggers the gate every 8
@@ -283,7 +288,7 @@ void audio_state_enter(int state)
 			// pitch is taken from voice 3's oscillator
 			// frequency (a SID hardware quirk); we set the
 			// freq to max for a "hissy" stab.  ADSR:
-			// attack=0, decay=1 (6ms), sustain=0, release=2.
+			// attack=0, decay=0 (6ms), sustain=0, release=2.
 			// Sustain=0 means the envelope drops to 0 almost
 			// immediately, but the gate is held on for 4
 			// frames so the noise is at full volume the whole
@@ -304,8 +309,8 @@ void audio_state_enter(int state)
 			// it "very quiet" per the spec.
 			// ADSR: attack=0, decay=9 (~114ms), sustain=15
 			// (voice 0) or 4 (voice 1), release=15.  Note
-			// durations are 10 frames per note — total 40
-			// frames = 0.8s at 50 Hz.
+		// durations are 11 frames per note — total 44
+		// frames = 0.88s at 50 Hz.
 			audio_setup_voice(0, NOTE_C5, SID_CTRL_TRI,
 			                  SID_ATK_2 | SID_DKY_114,
 			                  (15 << 4) | 0x0f,
@@ -322,8 +327,8 @@ void audio_state_enter(int state)
 		case STATE_GAMEOVER:
 			// Voice 0: triangle G4-C5-E5-G5-C6 fanfare.
 			// Voice 1: sustained C4 (a perfect fifth below
-			// G4) throughout.  Note durations are 30 frames
-			// — total 150 frames = 3.0s at 50 Hz.
+		// G4) throughout.  Note durations are 31 frames
+		// — total 155 frames = 3.1s at 50 Hz.
 			// ADSR: attack=0, decay=9, sustain=15, release=15
 			// (a long held chord that rings out).
 			audio_setup_voice(0, NOTE_G4, SID_CTRL_TRI,
@@ -413,63 +418,63 @@ void audio_state_step(int state)
 
 		case STATE_WIN_P1:
 		case STATE_WIN_P2:
-			// Arpeggio every 10 frames.  Both voices
-			// advance in lockstep.  Voice 0 plays the
-			// melody (C5, E5, G5, C6); voice 1 plays
-			// the same notes a major third below
-			// (A4, C5, E5, A5).  At frame 40 we gate
-			// both off (end of cue).
-			if (audio_step == 10) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				sid.voices[0].freq = NOTE_E5;
-				audio_gate_on(0, SID_CTRL_TRI);
-				audio_gate_off(1, SID_CTRL_TRI);
-				sid.voices[1].freq = NOTE_C5;
-				audio_gate_on(1, SID_CTRL_TRI);
-			} else if (audio_step == 20) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				sid.voices[0].freq = NOTE_G5;
-				audio_gate_on(0, SID_CTRL_TRI);
-				audio_gate_off(1, SID_CTRL_TRI);
-				sid.voices[1].freq = NOTE_E5;
-				audio_gate_on(1, SID_CTRL_TRI);
-			} else if (audio_step == 30) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				sid.voices[0].freq = NOTE_C6;
-				audio_gate_on(0, SID_CTRL_TRI);
-				audio_gate_off(1, SID_CTRL_TRI);
-				sid.voices[1].freq = NOTE_A5;
-				audio_gate_on(1, SID_CTRL_TRI);
-			} else if (audio_step >= 40) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				audio_gate_off(1, SID_CTRL_TRI);
-			}
+		// Arpeggio every 11 frames.  Both voices
+		// advance in lockstep.  Voice 0 plays the
+		// melody (C5, E5, G5, C6); voice 1 plays
+		// the same notes a major third below
+		// (A4, C5, E5, A5).  At frame 44 we gate
+		// both off (end of cue).
+		if (audio_step == 11) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			sid.voices[0].freq = NOTE_E5;
+			audio_gate_on(0, SID_CTRL_TRI);
+			audio_gate_off(1, SID_CTRL_TRI);
+			sid.voices[1].freq = NOTE_C5;
+			audio_gate_on(1, SID_CTRL_TRI);
+		} else if (audio_step == 22) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			sid.voices[0].freq = NOTE_G5;
+			audio_gate_on(0, SID_CTRL_TRI);
+			audio_gate_off(1, SID_CTRL_TRI);
+			sid.voices[1].freq = NOTE_E5;
+			audio_gate_on(1, SID_CTRL_TRI);
+		} else if (audio_step == 33) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			sid.voices[0].freq = NOTE_C6;
+			audio_gate_on(0, SID_CTRL_TRI);
+			audio_gate_off(1, SID_CTRL_TRI);
+			sid.voices[1].freq = NOTE_A5;
+			audio_gate_on(1, SID_CTRL_TRI);
+		} else if (audio_step >= 44) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			audio_gate_off(1, SID_CTRL_TRI);
+		}
 			break;
 
 		case STATE_GAMEOVER:
-			// Fanfare every 30 frames on voice 0; voice 1
-			// sustains C4 throughout the entire cue and is
-			// only gated off at the end (frame 150+).
-			if (audio_step == 30) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				sid.voices[0].freq = NOTE_C5;
-				audio_gate_on(0, SID_CTRL_TRI);
-			} else if (audio_step == 60) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				sid.voices[0].freq = NOTE_E5;
-				audio_gate_on(0, SID_CTRL_TRI);
-			} else if (audio_step == 90) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				sid.voices[0].freq = NOTE_G5;
-				audio_gate_on(0, SID_CTRL_TRI);
-			} else if (audio_step == 120) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				sid.voices[0].freq = NOTE_C6;
-				audio_gate_on(0, SID_CTRL_TRI);
-			} else if (audio_step >= 150) {
-				audio_gate_off(0, SID_CTRL_TRI);
-				audio_gate_off(1, SID_CTRL_TRI);
-			}
+		// Fanfare every 31 frames on voice 0; voice 1
+		// sustains C4 throughout the entire cue and is
+		// only gated off at the end (frame 155+).
+		if (audio_step == 31) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			sid.voices[0].freq = NOTE_C5;
+			audio_gate_on(0, SID_CTRL_TRI);
+		} else if (audio_step == 62) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			sid.voices[0].freq = NOTE_E5;
+			audio_gate_on(0, SID_CTRL_TRI);
+		} else if (audio_step == 93) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			sid.voices[0].freq = NOTE_G5;
+			audio_gate_on(0, SID_CTRL_TRI);
+		} else if (audio_step == 124) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			sid.voices[0].freq = NOTE_C6;
+			audio_gate_on(0, SID_CTRL_TRI);
+		} else if (audio_step >= 155) {
+			audio_gate_off(0, SID_CTRL_TRI);
+			audio_gate_off(1, SID_CTRL_TRI);
+		}
 			break;
 	}
 }

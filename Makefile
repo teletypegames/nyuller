@@ -20,14 +20,18 @@ SRC_DIR    := $(ROOT)/src
 # --- oscar64 flags ----------------------------------------
 # Override with:  make OPT=O3    (or O0/O1/O2/Os/g)
 OPT          ?= O1
-OPT_FLAGS    := -$(OPT)
+OPT_FLAGS    := $(if $(OPT),-$(OPT))
 
 # --- VICE flags -------------------------------------------
 VICE_FLAGS   := +confirmonexit -drive8type 1541
 
+# --- source files (for dependency tracking) ----------------
+SRC_FILES    := $(wildcard $(SRC_DIR)/*.c)
+HDR_FILES    := $(wildcard $(SRC_DIR)/*.h)
+
 # --- phony targets ----------------------------------------
-.PHONY: help compile run run-vice run-vice-cycle-exact \
-        play play-cycle-exact kill clean ensure-build-dir
+.PHONY: help compile run run-vice run-vice-cycle \
+        play play-cycle kill clean ensure-build-dir ensure-oscar64
 
 # ============================================================
 # help (default)
@@ -63,6 +67,9 @@ help:
 	@echo "    nyuller.asm             full 6502 listing"
 	@echo "    nyuller.map             region/section/object placement"
 	@echo "    nyuller.lbl             VICE monitor label commands"
+	@echo "    nyuller.int             intermediate compiler output"
+	@echo "    nyuller.dbj             intermediate compiler output"
+	@echo "    nyuller.csz             intermediate compiler output"
 	@echo ""
 	@echo "  VICE note: -drive8type 1541 is required for autostart to work."
 	@echo "  Without this flag the autostart LOAD\"*\",8,1 fails with ?DEVICE"
@@ -81,10 +88,9 @@ ensure-build-dir:
 	@mkdir -p "$(BUILD_DIR)"
 
 # ============================================================
-# compile
+# ensure-oscar64 — build the compiler if missing
 # ============================================================
-compile: ensure-build-dir
-	@# Build the oscar64 compiler first if it doesn't exist.
+ensure-oscar64:
 	@if [ ! -x "$(OSCAR64_BIN)" ]; then \
 		echo "oscar64 compiler not found at $(OSCAR64_BIN); building it..."; \
 		cd "$(OSCAR64_DIR)" && make -C make compiler; \
@@ -94,22 +100,23 @@ compile: ensure-build-dir
 		echo "  try: cd $(OSCAR64_DIR) && make -C make compiler" >&2; \
 		exit 1; \
 	fi
+
+# ============================================================
+# $(PRG) — compile main.c → nyuller.prg
+# ============================================================
+$(PRG): $(SRC_FILES) $(HDR_FILES) | ensure-build-dir ensure-oscar64
 	@echo "compiling $(SRC) with $(OSCAR64_BIN) -> $(BUILD_DIR)/"
 	cd "$(SRC_DIR)" && "$(OSCAR64_BIN)" -i="$(OSCAR64_DIR)/include" -o="$(PRG)" $(OPT_FLAGS) "$(SRC)"
 
 # ============================================================
+# compile — convenience alias for $(PRG)
+# ============================================================
+compile: $(PRG)
+
+# ============================================================
 # run — oscar64 built-in emulator (headless, fast)
 # ============================================================
-run: ensure-build-dir
-	@if [ ! -x "$(OSCAR64_BIN)" ]; then \
-		echo "oscar64 compiler not found at $(OSCAR64_BIN); building it..."; \
-		cd "$(OSCAR64_DIR)" && make -C make compiler; \
-	fi
-	@if [ ! -x "$(OSCAR64_BIN)" ]; then \
-		echo "error: $(OSCAR64_BIN) is still missing after build" >&2; \
-		echo "  try: cd $(OSCAR64_DIR) && make -C make compiler" >&2; \
-		exit 1; \
-	fi
+run: ensure-build-dir ensure-oscar64
 	@echo "running $(SRC) in oscar64's built-in emulator"
 	cd "$(SRC_DIR)" && "$(OSCAR64_BIN)" -i="$(OSCAR64_DIR)/include" -o="$(PRG)" $(OPT_FLAGS) -e "$(SRC)"
 
@@ -117,6 +124,8 @@ run: ensure-build-dir
 # run-vice — VICE x64 (foreground, blocks terminal)
 # ============================================================
 run-vice: $(D64)
+	@command -v x64 >/dev/null 2>&1 || { echo "error: x64 not found in PATH" >&2; exit 1; }
+	@[ -n "$$DISPLAY" ] || { echo "error: no \$DISPLAY" >&2; exit 1; }
 	@echo "running nyuller in VICE x64 (blocking)"
 	x64 $(VICE_FLAGS) -autostart "$(D64)"
 
@@ -124,13 +133,17 @@ run-vice: $(D64)
 # run-vice-cycle — VICE x64sc (foreground, cycle-exact, slow)
 # ============================================================
 run-vice-cycle: $(D64)
+	@command -v x64sc >/dev/null 2>&1 || { echo "error: x64sc not found in PATH" >&2; exit 1; }
+	@[ -n "$$DISPLAY" ] || { echo "error: no \$DISPLAY" >&2; exit 1; }
 	@echo "running nyuller in VICE x64sc (cycle-exact, blocking)"
 	x64sc $(VICE_FLAGS) -autostart "$(D64)"
 
 # ============================================================
 # play — VICE x64 detached (returns to shell)
 # ============================================================
-play: compile $(D64)
+play: $(D64)
+	@command -v x64 >/dev/null 2>&1 || { echo "error: x64 not found in PATH" >&2; exit 1; }
+	@[ -n "$$DISPLAY" ] || { echo "error: no \$DISPLAY" >&2; exit 1; }
 	@# Kill any previous VICE first.
 	@existing=$$(pgrep -f 'x64(sc)? \+confirmonexit.*nyuller\.d64' 2>/dev/null || true); \
 	if [ -n "$$existing" ]; then \
@@ -141,11 +154,13 @@ play: compile $(D64)
 	fi
 	@echo "launching VICE x64 in the background with $(D64)..."
 	@setsid nohup x64 $(VICE_FLAGS) -autostart "$(D64)" \
-		> "$(LOG)" 2>&1 < /dev/null & echo $$! > "$(PID_FILE)"
+		> "$(LOG)" 2>&1 < /dev/null &
 	@sleep 1
-	@if kill -0 "$$(cat "$(PID_FILE)")" 2>/dev/null; then \
+	@pid=$$(pgrep -f 'x64 \+confirmonexit.*nyuller\.d64' 2>/dev/null | head -1); \
+	if [ -n "$$pid" ]; then \
+		echo "$$pid" > "$(PID_FILE)"; \
 		echo ""; \
-		echo "VICE launched (PID $$(cat "$(PID_FILE)")). Look for the x64 window on your desktop."; \
+		echo "VICE launched (PID $$pid). Look for the x64 window on your desktop."; \
 		echo "Default keys: Port 1 (Hare)  = Arrows + Right Shift (fire)"; \
 		echo "             Port 2 (Scoot) = W A S D + Left Ctrl (fire)"; \
 		echo "Rebind under Settings → Input devices → Joystick settings."; \
@@ -159,7 +174,9 @@ play: compile $(D64)
 # ============================================================
 # play-cycle — VICE x64sc detached (cycle-exact, returns to shell)
 # ============================================================
-play-cycle: compile $(D64)
+play-cycle: $(D64)
+	@command -v x64sc >/dev/null 2>&1 || { echo "error: x64sc not found in PATH" >&2; exit 1; }
+	@[ -n "$$DISPLAY" ] || { echo "error: no \$DISPLAY" >&2; exit 1; }
 	@existing=$$(pgrep -f 'x64(sc)? \+confirmonexit.*nyuller\.d64' 2>/dev/null || true); \
 	if [ -n "$$existing" ]; then \
 		echo "killing previous VICE process(es): $$existing"; \
@@ -169,11 +186,13 @@ play-cycle: compile $(D64)
 	fi
 	@echo "launching VICE x64sc in the background with $(D64)..."
 	@setsid nohup x64sc $(VICE_FLAGS) -autostart "$(D64)" \
-		> "$(LOG)" 2>&1 < /dev/null & echo $$! > "$(PID_FILE)"
+		> "$(LOG)" 2>&1 < /dev/null &
 	@sleep 1
-	@if kill -0 "$$(cat "$(PID_FILE)")" 2>/dev/null; then \
+	@pid=$$(pgrep -f 'x64sc \+confirmonexit.*nyuller\.d64' 2>/dev/null | head -1); \
+	if [ -n "$$pid" ]; then \
+		echo "$$pid" > "$(PID_FILE)"; \
 		echo ""; \
-		echo "VICE launched (PID $$(cat "$(PID_FILE)")). Look for the x64sc window on your desktop."; \
+		echo "VICE launched (PID $$pid). Look for the x64sc window on your desktop."; \
 		echo "Default keys: Port 1 (Hare)  = Arrows + Right Shift (fire)"; \
 		echo "             Port 2 (Scoot) = W A S D + Left Ctrl (fire)"; \
 		echo "Rebind under Settings → Input devices → Joystick settings."; \
@@ -213,6 +232,7 @@ kill:
 # All c1541 calls are wrapped in `|| true` so the final
 # list-and-grep is the authoritative check.
 $(D64): $(PRG) | ensure-build-dir
+	@command -v c1541 >/dev/null 2>&1 || { echo "error: c1541 not found" >&2; exit 1; }
 	@echo "wrapping $(PRG) in $(D64) (VICE autostart needs a disk image)..."
 	@c1541 -format ny,of d64 "$(D64)" >/dev/null 2>&1 || true
 	@echo "write $(PRG)" | c1541 "$(D64)" >/dev/null 2>&1 || true
@@ -228,7 +248,7 @@ $(D64): $(PRG) | ensure-build-dir
 # clean
 # ============================================================
 clean:
-	rm -f "$(PRG)" "$(D64)" "$(BUILD_DIR)/nyuller.asm" "$(BUILD_DIR)/nyuller.map" \
+	@rm -f "$(PRG)" "$(D64)" "$(BUILD_DIR)/nyuller.asm" "$(BUILD_DIR)/nyuller.map" \
 		"$(BUILD_DIR)/nyuller.lbl" "$(BUILD_DIR)/nyuller.int" "$(BUILD_DIR)/nyuller.dbj" \
 		"$(BUILD_DIR)/nyuller.csz" "$(PID_FILE)" "$(LOG)"
 	@echo "cleaned build/"

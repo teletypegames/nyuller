@@ -139,7 +139,7 @@ $21-$24) goes to $D800-$DBE7.
 
 | Element | Value |
 |---------|-------|
-| Title screen | `source_images/screen_title.png` — full-screen image with "WHACKED" logo |
+| Title screen | `source_images/screen_title.png` — full-screen image with "Nyuller" logo |
 | Waiting 1 | `source_images/screen_waiting1.png` — 1.2 sec, "ping" jingle |
 | Waiting 2 | `source_images/screen_waiting_2.png` — random 2-5 sec, suspense music |
 | DRAW | white screen, big counter incrementing each frame, sharp stab |

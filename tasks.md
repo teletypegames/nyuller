@@ -465,13 +465,14 @@ Findings from the second round of 4-agent parallel code review.
   frames"; spec says "4-frame stab".
   **Fix:** change `< 5` to `< 4`, or update comment/spec to "5".
 
-- [ ] **GAMEOVER resets scores immediately, spec says show final
+- [x] **GAMEOVER resets scores immediately, spec says show final
   score** — `game_enter_gameover` (game.c:273-274) resets
   `score_p1 = score_p2 = 0` on entry. GAME.md §3 step 7 implies
   the GAMEOVER screen should show the final score (5 : x) with a
   winner banner; scores should only reset when returning to TITLE.
   **Fix:** move score reset from `game_enter_gameover` to
   `game_enter_title` (or to the GAMEOVER→TITLE transition).
+  **Fixed:** removed reset from `game_enter_gameover`, added to `game_enter_title`.
 
 - [ ] **ADSR decay comments inconsistent with constants** —
   `src/audio.c:244` says "decay=9 (~114ms)" but uses
@@ -500,11 +501,11 @@ Findings from the second round of 4-agent parallel code review.
   window to pre-clear screen RAM (would help the screen-RAM
   critical bug above).
 
-- [ ] **Makefile: no VICE binary check** — `make run-vice`,
+- [x] **Makefile: no VICE binary check** — `make run-vice`,
   `make play`, etc. don't check if `x64`/`x64sc` is in PATH.
   Old `build.sh` had `command -v "$PLAY_VICE"`.
   **Fix:** add `@command -v x64 >/dev/null 2>&1 || { echo "error: x64 not found" >&2; exit 1; }`
-  to each VICE target.
+  to each VICE target. **Fixed:** added checks to all four VICE targets.
 
 - [ ] **Makefile: no `$DISPLAY` check** — old `build.sh` warned
   on missing `$DISPLAY` for foreground VICE and errored for
@@ -513,7 +514,7 @@ Findings from the second round of 4-agent parallel code review.
   **Fix:** add `@[ -n "$$DISPLAY" ] || { echo "error: no \$DISPLAY" >&2; exit 1; }`
   to VICE GUI targets.
 
-- [ ] **Makefile: `setsid` PID capture is fragile** —
+- [x] **Makefile: `setsid` PID capture is fragile** —
   `$$!` captures the `setsid` wrapper PID, not the `x64` child.
   `setsid` forks and the parent exits, so the PID file often
   points to a dead process. `make kill` uses `pgrep` (correct),
@@ -534,12 +535,9 @@ Findings from the second round of 4-agent parallel code review.
   **Fix:** add `@command -v c1541 >/dev/null 2>&1 || { echo "error: c1541 not found" >&2; exit 1; }`
   at the top of the `$(D64)` recipe.
 
-- [ ] **Makefile: oscar64-build guard duplicated** — the
-  "build oscar64 if missing" block appears in both `compile`
-  and `run` recipes (Makefile:88-96 and 104-112). DRY
-  violation.
-  **Fix:** extract an `ensure-oscar64` phony target; have
-  `compile` and `run` (and `$(PRG)`) depend on it.
+- [x] **Makefile: oscar64-build guard duplicated** —
+  **Fixed:** `ensure-oscar64` phony target exists (Makefile:90-99);
+  `$(PRG)` and `run` both depend on it. No duplication.
 
 - [ ] **WAIT transition stinger uses voice 2 (the RNG source)** —
   `src/game.c:123` picks voice 2 for the WAIT stinger. This
@@ -560,12 +558,13 @@ Findings from the second round of 4-agent parallel code review.
   `src/score.c:36`, `src/banner.c:29`. Bytes like 0x90, 0xF0 are
   signed; math is masked by `& 0x0F` so behavior is correct, but
   `unsigned char` would be cleaner.
-- [ ] **`memmap_restore()` is dead code** — never called; main
+- [x] **`memmap_restore()` is dead code** — never called; main
   loop is infinite. Document as intentional or wire up an exit
-  path (e.g. NMI handler).
-- [ ] **PROG_C64.md banking table is oversimplified** — says
+  path (e.g. NMI handler). **Fixed:** added comment documenting it's
+  intentionally unused (game runs until power-off).
+- [x] **PROG_C64.md banking table is oversimplified** — says
   "LORAM 0=RAM, 1=BASIC ROM" but BASIC actually requires
-  LORAM=1 AND HIRAM=1. The `$BC00` fix relies on HIRAM=0.
+  LORAM=1 AND HIRAM=1. The `$BC00` fix relies on HIRAM=0. **Fixed:** updated banking table and memory map to clarify LORAM+HIRAM requirement.
 - [ ] **Makefile: `clean` first line lacks `@` prefix** —
   echoes the long `rm -f ...` command. Minor inconsistency.
 - [ ] **Makefile: undocumented intermediate files** —
@@ -573,7 +572,7 @@ Findings from the second round of 4-agent parallel code review.
   but `help` doesn't list them as output files.
 - [ ] **Makefile: `make OPT=` (empty) produces `-` flag** —
   edge case. Guard with `OPT_FLAGS := $(if $(OPT),-$(OPT))`.
-- [ ] **Audio schedule off-by-one** (already documented in
+- [x] **Audio schedule off-by-one** (already documented in
   KNOWN_ISSUES.md #3) — WIN/GAMEOVER notes are 1 frame short per
   note (~10% deviation). Cosmetic.
 

@@ -30,7 +30,7 @@ colors in the files are the colors the C64 will display):
 
 | File | Resolution | Used for |
 |------|------------|----------|
-| `source_images/screen_title.png`     | 1390×1130 | Title screen — "WHACKED" logo, both characters facing off, sunset farm background. |
+| `source_images/screen_title.png`     | 1390×1130 | Title screen — "Nyuller" logo, both characters facing off, sunset farm background. |
 | `source_images/screen_waiting1.png`  | 1401×1123 | "Get ready" screen — the two characters glaring at each other in profile. |
 | `source_images/screen_waiting_2.png` | 1390×1130 | "Wait for it" screen — full-body shot of the two characters in their stances, same scene as the title but cropped. |
 | `source_images/screen_win_hare.png`  | 1391×1131 | Hare won — Hare punching Scoot in the face mid-scooter. |

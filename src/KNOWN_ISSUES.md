@@ -72,9 +72,9 @@ total), DRAW noise (4 frames — checks `>= 4` which also lines up
 correctly), WAIT retrigger cadence (the `mod 16` checks produce the
 right 16-frame cycles).
 
-**Decision:** Cosmetic. Not worth the schedule risk of changing
-`audio_step++` to the end of the function (would need to verify
-all 5 state schedules still work).
+**Decision:** Fixed. Adjusted schedule frame numbers: WIN now uses
+11-frame notes (total 44 frames = 0.88s), GAMEOVER uses 31-frame
+notes (total 155 frames = 3.1s).
 
 ## 4. `docs/c64/vic/graphics_modes.md` has wrong color mapping (Review 7)
 

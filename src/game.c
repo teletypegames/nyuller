@@ -106,7 +106,7 @@ static unsigned short draw_counter;
 //
 //   STATE_TITLE     -> voice 0  (TITLE is silent; voice 1+2 free)
 //   STATE_READY     -> voice 1  (READY uses voice 0 only; voice 1+2 free)
-//   STATE_WAIT      -> voice 2  (WAIT uses voice 0+1; voice 2 free)
+//   STATE_WAIT      -> voice 0  (WAIT uses voice 0+1; voice 2 is the RNG source)
 //   STATE_DRAW      -> voice 0  (DRAW uses voice 2 for noise; voice 0+1 free)
 //   STATE_WIN_P1/P2 -> voice 2  (WIN uses voice 0+1; voice 2 free)
 //   STATE_GAMEOVER  -> voice 2  (GAMEOVER uses voice 0+1; voice 2 free)
@@ -120,7 +120,7 @@ static byte stinger_voice_for_state(byte s)
 	switch (s) {
 		case STATE_TITLE:    return 0;
 		case STATE_READY:    return 1;
-		case STATE_WAIT:     return 2;
+		case STATE_WAIT:     return 0;
 		case STATE_DRAW:     return 0;
 		case STATE_WIN_P1:
 		case STATE_WIN_P2:   return 2;
@@ -162,6 +162,8 @@ static byte last_winner;
 static void game_enter_title(void)
 {
 	show_screen(SCREEN_TITLE);
+	score_p1 = 0;
+	score_p2 = 0;
 	score_render();
 	// "PRESS FIRE" prompt: drawn in row 1 (below the score bar) of
 	// the title screen.  Re-rendered on every TITLE entry so it
@@ -190,10 +192,10 @@ static void game_enter_ready(void)
 	banner_clear(1);
 	enter_frame = frame_count;
 	// Sample SID oscillator 3 ($D41B) for the upcoming WAIT duration.
-	// 100 + (sid.random % 150) frames = 2.0..5.0 sec at 50 Hz.  This
+	// 100 + (sid.random % 151) frames = 2.0..5.0 sec at 50 Hz.  This
 	// register is the SID's voice 3 oscillator low byte, which is
 	// driven by an LFSR and effectively random between reads.
-	wait_duration_frames = 100 + (sid.random % 150);
+	wait_duration_frames = 100 + (sid.random % 151);
 	vic.color_border = 0;
 	audio_state_enter(STATE_READY);
 	// 5-frame transition stinger on voice 1 (free in READY).
@@ -222,14 +224,15 @@ static void game_enter_draw(void)
 	draw_was_pressed[0] = input_fire(1);  // Hare — capture current state
 	draw_was_pressed[1] = input_fire(0);  // Scoot — so holding from WAIT
 	                                    //           doesn't auto-win
-	// Reset the per-frame counter and render "001" once.  The
-	// bitmap was cleared to 0 and $D021 was set to white by
-	// show_white_screen(), so this draws black "001" digits on the
+	// Reset the per-frame counter to 0 and render "000" once.
+	// The bitmap was cleared to 0 and $D021 was set to white by
+	// show_white_screen(), so this draws black "000" digits on the
 	// white background.  game_step_draw() will then increment the
-	// counter and re-render each frame.  The spec (GAME.md §3 step
-	// 4) says the counter starts at 001, not 000.
-	draw_counter = 1;
-	draw_render_counter(1);
+	// counter and re-render each frame.  A perfect 1-frame draw
+	// therefore reports "001" (counter is incremented to 1 before
+	// the fire check runs).
+	draw_counter = 0;
+	draw_render_counter(0);
 	audio_state_enter(STATE_DRAW);
 	// 5-frame transition stinger on voice 0 (voice 2 is the noise stab).
 	audio_play_stinger(stinger_voice_for_state(STATE_DRAW), STINGER_DURATION);
@@ -265,13 +268,11 @@ static void game_enter_win_p2(void)
 
 static void game_enter_gameover(void)
 {
-	// Show the title screen, but with the scores reset to 0/0 (the
-	// score bar makes this visually obvious: it's the title screen
-	// with an empty score bar).  The winner banner ("HARE WINS!" or
-	// "SCOOT WINS!") is rendered into row 1 below the score bar.
+	// Show the title screen with the final scores still displayed
+	// (5 : x or x : 5) and the winner banner ("HARE WINS!" or
+	// "SCOOT WINS!") in row 1 below the score bar.  Scores are not
+	// reset here — they reset on the next TITLE entry.
 	show_screen(SCREEN_TITLE);
-	score_p1 = 0;
-	score_p2 = 0;
 	score_render();
 	// "HARE WINS!" or "SCOOT WINS!" — driven by last_winner set in
 	// game_enter_win_p1/p2.  show_screen(SCREEN_TITLE) just
@@ -374,7 +375,7 @@ static void game_step_draw(void)
 	// strobe creates a brief visible "flash" at the start of the
 	// round (4 frames at 50 Hz = ~80 ms).  After the flash the
 	// border matches the white screen and disappears visually.
-	if (elapsed < 5)
+	if (elapsed < 4)
 		vic.color_border = (elapsed & 1) ? 0 : 1;
 	else
 		vic.color_border = 1;
@@ -390,7 +391,7 @@ static void game_step_draw(void)
 	// 500-frame fault timeout (10 sec at 50 Hz).  If neither player
 	// fires in 10 sec, abort the round, trigger a short stinger on
 	// SID voice 1, and go back to TITLE.  No point awarded.
-	if (elapsed > 500) {
+	if (elapsed >= 500) {
 		state = STATE_TITLE;
 		game_enter_title();
 		// Trigger the stinger AFTER audio_state_enter(TITLE)

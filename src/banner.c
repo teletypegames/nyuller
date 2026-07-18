@@ -26,7 +26,7 @@
 // to use the font, but the banner is a separate concern: it doesn't
 // touch the score bar's labels or pips, and it renders below the
 // score bar (row 1) or in the body of the screen (rows 2+).
-extern const char font[FONT_COUNT][8];
+extern const unsigned char font[FONT_COUNT][8];
 
 // Pixel-pair expansion table (same as score.c).  Each 4-bit font
 // nibble is expanded to a byte where each "1" becomes "11" and each
@@ -41,7 +41,7 @@ static const char expand4[16] = {
 // — duplicated here so banner.c is self-contained.
 #define BM_BASE		((char *)0xE000)
 #define CRAM_BASE	((char *)0xD800)
-#define SMEM_BASE	((char *)0xD000)
+#define SMEM_BASE	((char *)0xC400)
 #define CELLS_PER_ROW	40
 #define BYTES_PER_CELL	8
 #define BYTES_PER_ROW	320
