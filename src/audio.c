@@ -184,8 +184,14 @@ static void audio_advance_stinger(void)
 {
 	if (stinger_ticks > 0) {
 		stinger_ticks--;
-		if (stinger_ticks == 0)
-			sid.voices[stinger_voice].ctrl = SID_CTRL_RECT;
+		if (stinger_ticks == 0) {
+			// If the stinger used voice 2, restore the NOISE waveform
+			// (no GATE) so the $D41B random source keeps running.
+			if (stinger_voice == 2)
+				sid.voices[2].ctrl = SID_CTRL_NOISE;
+			else
+				sid.voices[stinger_voice].ctrl = SID_CTRL_RECT;
+		}
 	}
 }
 

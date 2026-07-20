@@ -806,3 +806,10 @@ Phase 8: polish and end-to-end test
 
 Within a phase, break up by file: "Phase 2: add memmap_setup and
 show_screen helpers" before "Phase 2: wire into main.c".
+
+---
+
+## Notes / open ideas
+
+- The images did not fit into RAM. Maybe remaking them onto a common
+  background and only re-rendering parts would be a solution.

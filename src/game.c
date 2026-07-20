@@ -107,7 +107,9 @@ static unsigned short draw_counter;
 //
 //   STATE_TITLE     -> voice 0  (TITLE is silent; voice 1+2 free)
 //   STATE_READY     -> voice 1  (READY uses voice 0 only; voice 1+2 free)
-//   STATE_WAIT      -> voice 0  (WAIT uses voice 0+1; voice 2 is the RNG source)
+//   STATE_WAIT      -> voice 2  (WAIT uses voice 0+1; voice 2 is normally the
+//                               RNG source, but WAIT doesn't sample RNG, so it
+//                               is free for the short stinger)
 //   STATE_DRAW      -> voice 0  (DRAW uses voice 2 for noise; voice 0+1 free)
 //   STATE_WIN_P1/P2 -> voice 2  (WIN uses voice 0+1; voice 2 free)
 //   STATE_GAMEOVER  -> voice 2  (GAMEOVER uses voice 0+1; voice 2 free)
@@ -121,7 +123,7 @@ static byte stinger_voice_for_state(byte s)
 	switch (s) {
 		case STATE_TITLE:    return 0;
 		case STATE_READY:    return 1;
-		case STATE_WAIT:     return 0;
+		case STATE_WAIT:     return 2;
 		case STATE_DRAW:     return 0;
 		case STATE_WIN_P1:
 		case STATE_WIN_P2:   return 2;
@@ -162,11 +164,12 @@ static byte last_winner;
 
 static void game_enter_title(void)
 {
-	// Use NUFLI for title screen (higher quality)
+	// Show the title as a NUFLI screen.  nufli_show() saves the VIC/CIA
+	// state and returns after the Mufflon displayer sets up the VIC.
+	// The raster IRQ keeps running game_step(), which waits for fire or
+	// a demo timeout before leaving TITLE.
 	nufli_show(NUFLI_SCREEN_TITLE);
-	nufli_exit();
 
-	show_screen(SCREEN_TITLE);  // Restore multicolor mode
 	score_p1 = 0;
 	score_p2 = 0;
 	score_render();
@@ -181,6 +184,9 @@ static void game_enter_title(void)
 
 static void game_enter_ready(void)
 {
+	// Leave NUFLI mode (if we were in it) and switch to multicolor.
+	nufli_exit();
+
 	show_screen(SCREEN_WAITING1);
 	score_render();
 	// Row 1 of the waiting1 screen — clear any leftover banner.
@@ -199,6 +205,9 @@ static void game_enter_ready(void)
 
 static void game_enter_wait(void)
 {
+	// Leave NUFLI mode (if we were in it) and switch to multicolor.
+	nufli_exit();
+
 	show_screen(SCREEN_WAITING2);
 	score_render();
 	banner_clear(1);
@@ -211,6 +220,9 @@ static void game_enter_wait(void)
 
 static void game_enter_draw(void)
 {
+	// Leave NUFLI mode (if we were in it) and switch to multicolor.
+	nufli_exit();
+
 	show_white_screen();
 	score_render();
 	banner_clear(1);
@@ -235,11 +247,9 @@ static void game_enter_draw(void)
 
 static void game_enter_win_p1(void)
 {
-	// Use NUFLI for win screen (higher quality)
+	// Show the win screen as a NUFLI screen.
 	nufli_show(NUFLI_SCREEN_WIN_HARE);
-	nufli_exit();
 
-	show_screen(SCREEN_WIN_HARE);  // Restore multicolor mode
 	score_p1++;
 	score_render();
 	banner_clear(1);
@@ -252,11 +262,9 @@ static void game_enter_win_p1(void)
 
 static void game_enter_win_p2(void)
 {
-	// Use NUFLI for win screen (higher quality)
+	// Show the win screen as a NUFLI screen.
 	nufli_show(NUFLI_SCREEN_WIN_SCOOT);
-	nufli_exit();
 
-	show_screen(SCREEN_WIN_SCOOT);  // Restore multicolor mode
 	score_p2++;
 	score_render();
 	banner_clear(1);
@@ -269,12 +277,9 @@ static void game_enter_win_p2(void)
 
 static void game_enter_gameover(void)
 {
-	// Use NUFLI for gameover screen (higher quality)
+	// Show the gameover screen as a NUFLI screen.
 	nufli_show(NUFLI_SCREEN_GAMEOVER);
-	nufli_exit();
 
-	// Show the title screen with the final scores still displayed
-	show_screen(SCREEN_TITLE);  // Restore multicolor mode
 	score_render();
 	if (last_winner == 1)
 		banner_render("HARE WINS!", 1);
@@ -340,6 +345,14 @@ static void game_step_title(void)
 			}
 			break;
 	}
+
+	// Demo-mode timeout: if no fire is pressed, auto-advance to READY
+	// after 6 seconds so the headless emulator run completes.  On real
+	// hardware the user will have pressed fire long before this.
+	if (elapsed >= 300) {
+		state = STATE_READY;
+		game_enter_ready();
+	}
 }
 
 static void game_step_ready(void)
@@ -377,14 +390,6 @@ static void game_step_draw(void)
 	else
 		vic.color_border = 1;
 
-	// Per-frame counter: increment (capped at 999) and re-render.
-	// Drawn after the flash so the border strobe and the digit
-	// update happen in the same IRQ; the next visible frame shows
-	// both updates together.
-	if (draw_counter < 999)
-		draw_counter++;
-	draw_render_counter(draw_counter);
-
 	// 500-frame fault timeout (10 sec at 50 Hz).  If neither player
 	// fires in 10 sec, abort the round, trigger a short stinger on
 	// SID voice 1, and go back to TITLE.  No point awarded.
@@ -396,6 +401,14 @@ static void game_step_draw(void)
 		audio_play_fault_stinger();
 		return;
 	}
+
+	// Per-frame counter: increment (capped at 999) and re-render.
+	// Drawn after the flash so the border strobe and the digit
+	// update happen in the same IRQ; the next visible frame shows
+	// both updates together.
+	if (draw_counter < 999)
+		draw_counter++;
+	draw_render_counter(draw_counter);
 
 	// First to fire wins.  Rising-edge detection so holding fire from
 	// before DRAW doesn't auto-trigger a win (e.g. if the player
